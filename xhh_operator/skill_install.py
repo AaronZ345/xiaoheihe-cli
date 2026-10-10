@@ -23,8 +23,8 @@ def install_skill(destination=None):
         raise ValueError("技能目标不能是符号链接。")
     if destination.exists():
         try:
-            current = (destination / "SKILL.md").read_text()
-        except OSError:
+            current = (destination / "SKILL.md").read_text(encoding="utf-8")
+        except (OSError, UnicodeError):
             raise ValueError("目标目录已有其他内容，未覆盖。") from None
         if not all(
             re.search(pattern, current, re.M)

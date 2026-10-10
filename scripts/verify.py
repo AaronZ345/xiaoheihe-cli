@@ -31,6 +31,7 @@ def main():
             cwd=ROOT,
             capture_output=True,
             text=True,
+            encoding="utf-8",
             check=True,
         )
         if not completed.stdout.strip():

@@ -1,7 +1,7 @@
 FROM python:3.12-slim
 
 LABEL org.opencontainers.image.title="xiaoheihe-cli"
-LABEL description="小黑盒爬虫API - Cookie持久化 + Playwright"
+LABEL description="小黑盒游戏记录与社区操作 CLI 和 REST 服务"
 
 WORKDIR /app
 
@@ -13,7 +13,7 @@ RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debia
 
 # Install system dependencies for Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    wget gnupg \
+    wget gnupg ffmpeg \
     libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 libdrm2 libxkbcommon0 \
     libxcomposite1 libxdamage1 libxrandr2 libgbm1 libpango-1.0-0 \
     libcairo2 libasound2 libxshmfence1 libx11-xcb1 libx11-6 libxcb1 \

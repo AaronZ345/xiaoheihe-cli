@@ -179,8 +179,8 @@ async def login_browser(
 
 async def import_cookies(store: SessionStore, path: Path):
     try:
-        text = path.read_text().strip()
-    except OSError:
+        text = path.read_text(encoding="utf-8").strip()
+    except (OSError, UnicodeError):
         raise OperatorError("无法读取 Cookie 文件。", "local") from None
     cookies = []
     for pair in text.split(";"):

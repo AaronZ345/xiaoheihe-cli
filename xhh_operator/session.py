@@ -48,7 +48,7 @@ class SessionStore:
         if self.root.is_symlink() or self.path.is_symlink():
             raise OperatorError("会话文件不能是符号链接。", "local")
         try:
-            data = json.loads(self.path.read_text())
+            data = json.loads(self.path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             return None
         except (ValueError, OSError):
@@ -84,7 +84,7 @@ class SessionStore:
             raise AuthError("没有小黑盒会话，会话未保存。")
         fd, filename = tempfile.mkstemp(prefix=".session-", dir=self.root)
         try:
-            with os.fdopen(fd, "w") as file:
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
                 json.dump({"user_id": user_id, "cookies": filtered}, file)
                 file.flush()
                 os.fsync(file.fileno())

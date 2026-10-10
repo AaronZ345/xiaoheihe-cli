@@ -344,6 +344,9 @@ async def run(args):
 
 
 def main(argv=None):
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8")
     logging.getLogger("httpx").setLevel(logging.CRITICAL)
     argv = list(sys.argv[1:] if argv is None else argv)
     try:

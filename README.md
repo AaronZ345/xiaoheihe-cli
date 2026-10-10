@@ -27,21 +27,25 @@
 
 ## 安装
 
-需要 **Python 3.11 或更新版本**。下载发行包后安装：
+需要 **Python 3.11 或更新版本**。直接安装：
 
 ```bash
-uv tool install ./xiaoheihe_cli-0.1.0-py3-none-any.whl
+uv tool install git+https://github.com/AaronZ345/xiaoheihe-cli.git
 xiaoheihe-cli --version
 xiaoheihe-cli doctor
 ```
 
-从源码使用：
+从源码开发：
 
 ```bash
+git clone https://github.com/AaronZ345/xiaoheihe-cli.git
+cd xiaoheihe-cli
 uv sync
 uv run xiaoheihe-cli --help
 uv run xiaoheihe-cli doctor
 ```
+
+本地 wheel 也可以用 `uv tool install /path/to/xiaoheihe_cli-0.1.0-py3-none-any.whl` 安装。
 
 `xiaoheihe` 是兼容命令别名。网页登录可使用已安装的 Chrome 或 Edge；需要配套引擎时，在工具环境运行 `playwright install chromium`。源码环境可执行 `uv run playwright install chromium firefox webkit`。这些操作不读取日常浏览器的个人资料。
 
