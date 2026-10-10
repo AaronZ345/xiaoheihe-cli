@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- 补齐三系统的命名浏览器和安装路径识别，支持 Brave、Vivaldi、Opera、Arc、系统 Chromium、Chrome／Edge 的不同通道。
+- 新增系统 Firefox 和 macOS Safari 的 WebDriver 登录，支持便携程序和驱动路径；Windows 会话默认保存在 LocalAppData。
+- 浏览器 CI 扩展到 macOS、Windows、Linux，覆盖独立上下文、原生 Firefox／Safari 登录和退出清理。
+
 - 包名、主命令和 Skill 统一为 `xiaoheihe-cli`，保留 `xiaoheihe` 命令别名和 Python 客户端。
 - 支持个人游戏记录、本人评分与完整短评的查询、创建、修改和删除；编辑保留未指定字段。
 - 支持首页、本人主页、四类搜索、帖子管理、评论分页、楼中楼和创作者数据。

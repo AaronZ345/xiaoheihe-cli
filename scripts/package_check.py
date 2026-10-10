@@ -26,6 +26,7 @@ def check_packages(directory):
                     "xhh_operator/service.py",
                     "xhh_operator/media.py",
                     "xhh_operator/mcp_server.py",
+                    "xhh_operator/webdriver.py",
                     "xiaoheihe/__init__.py",
                     "api_server.py",
                 )

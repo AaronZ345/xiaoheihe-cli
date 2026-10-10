@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlsplit
 
 import qrcode
 
-from .browsers import launch_browser
+from .browsers import NATIVE_BROWSERS, choices, launch_browser
 from .errors import AuthError, OperatorError, ProtocolError
 from .http import WEB_BASE, HeyboxAPI
 from .session import SessionStore
@@ -133,12 +133,42 @@ async def login_qr(store: SessionStore, *, timeout=180, qr_file: Path | None = N
 
 
 async def login_browser(
-    store: SessionStore, *, timeout=300, browser_name=None, channel=None, executable_path=None
+    store: SessionStore,
+    *,
+    timeout=300,
+    browser_name=None,
+    channel=None,
+    executable_path=None,
+    driver_path=None,
 ):
     from playwright.async_api import Error as PlaywrightError
     from playwright.async_api import async_playwright
 
     print("正在打开小黑盒官方登录页，请在浏览器中完成登录和验证。", file=sys.stderr, flush=True)
+    selected = browser_name or os.environ.get("XHH_BROWSER_ENGINE", "auto")
+    if selected in NATIVE_BROWSERS:
+        from .webdriver import NativeBrowser
+
+        choice = choices(
+            browser_name, channel=channel, executable_path=executable_path, driver_path=driver_path
+        )[0]
+        if sys.platform.startswith("linux") and not any(
+            os.environ.get(key) for key in ("DISPLAY", "WAYLAND_DISPLAY", "MIR_SOCKET")
+        ):
+            raise OperatorError("当前环境没有桌面显示服务，请使用扫码登录。", "browser")
+        async with NativeBrowser(choice) as browser:
+            await browser.navigate(WEB_BASE)
+            await browser.click_login()
+            deadline = time.monotonic() + timeout
+            while time.monotonic() < deadline:
+                if result := await finish_browser_login(
+                    store, await browser.cookies(), choice.name
+                ):
+                    return result
+                await asyncio.sleep(2)
+            raise OperatorError("等待网页登录超时，会话未保存。", "login_timeout", 3)
+    if driver_path:
+        raise OperatorError("--driver-path 仅用于 firefox-system 或 safari。", "input")
     async with async_playwright() as playwright:
         browser, selected = await launch_browser(
             playwright, browser=browser_name, channel=channel, executable_path=executable_path
@@ -155,26 +185,25 @@ async def login_browser(
                 if page.is_closed():
                     raise OperatorError("登录窗口已关闭，会话未保存。", "login_cancelled", 3)
                 cookies = await context.cookies()
-                names = {c["name"]: c["value"] for c in cookies}
-                if (names.get("user_pkey") or names.get("pkey")) and (
-                    names.get("user_heybox_id") or names.get("heybox_id")
-                ):
-                    cookies = normalize_cookies(cookies)
-                    async with HeyboxAPI(cookies) as api:
-                        user_id = await verify(api)
-                    store.save(cookies, user_id)
-                    return {
-                        "authenticated": True,
-                        "user_id": user_id,
-                        "method": "browser",
-                        "browser": selected,
-                    }
+                if result := await finish_browser_login(store, cookies, selected):
+                    return result
                 await asyncio.sleep(2)
             raise OperatorError("等待网页登录超时，会话未保存。", "login_timeout", 3)
         except PlaywrightError:
             raise OperatorError("浏览器登录操作失败或窗口已关闭，会话未保存。", "browser") from None
         finally:
             await browser.close()
+
+
+async def finish_browser_login(store, cookies, selected):
+    cookies = normalize_cookies(cookies)
+    names = {cookie["name"]: cookie["value"] for cookie in cookies}
+    if not (names.get("pkey") and names.get("heybox_id")):
+        return None
+    async with HeyboxAPI(cookies) as api:
+        user_id = await verify(api)
+    store.save(cookies, user_id)
+    return {"authenticated": True, "user_id": user_id, "method": "browser", "browser": selected}
 
 
 async def import_cookies(store: SessionStore, path: Path):

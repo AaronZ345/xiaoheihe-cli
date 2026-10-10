@@ -32,7 +32,7 @@ xiaoheihe-cli mcp --transport streamable-http --port 8001
 | 工具 | 参数与用途 |
 |---|---|
 | `check_login_status` | 核验当前身份；不返回会话凭据 |
-| `interactive_login` | `browser/timeout`，打开独立的官方登录窗口 |
+| `interactive_login` | `browser/timeout/executable_path/driver_path`，打开所选浏览器的独立官方登录窗口 |
 | `get_login_qr_code` | `timeout`，立即返回 PNG 二维码，后台等待确认 |
 | `get_user_profile` | `pageSize`，本人主页与动态 |
 | `get_home_content` | `limit/offset`，首页内容 |

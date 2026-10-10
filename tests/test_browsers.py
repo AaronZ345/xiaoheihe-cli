@@ -48,7 +48,7 @@ def test_custom_binary_requires_a_real_file(tmp_path):
     [
         {"browser": "firefox", "channel": "chrome"},
         {"browser": "webkit", "channel": "msedge"},
-        {"browser": "safari"},
+        {"browser": "safari", "channel": "chrome"},
         {"browser": "chrome", "channel": "msedge"},
     ],
 )

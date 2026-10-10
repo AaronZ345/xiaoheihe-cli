@@ -19,8 +19,12 @@ jobs:
       - run: uv sync --extra dev --extra mcp --frozen
       - run: uv run --extra dev --extra mcp python scripts/verify.py
   browser:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
@@ -28,9 +32,22 @@ jobs:
           python-version: '3.13'
       - run: uv sync --extra dev --frozen
       - run: uv run playwright install --with-deps chromium firefox webkit
+      - name: Enable Safari automation on the disposable runner
+        if: runner.os == 'macOS'
+        run: sudo safaridriver --enable
+      - name: Install Brave on the disposable Linux runner
+        if: runner.os == 'Linux'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p tmp/browser-runtime
+          gh release download --repo brave/brave-browser --pattern 'brave-browser_*_amd64.deb' --dir tmp/browser-runtime
+          sudo apt-get install -y ./tmp/browser-runtime/*.deb
       - run: uv run --extra dev pytest -q -m browser
         env:
           XHH_RUN_BROWSER_TESTS: '1'
+          XHH_RUN_NATIVE_TESTS: '1'
+          XHH_REQUIRE_NATIVE_TESTS: '1'
   container:
     runs-on: ubuntu-latest
     timeout-minutes: 20

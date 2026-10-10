@@ -24,7 +24,7 @@ metadata:
 
 ## 登录、媒体与结果
 
-首次使用 `login` 扫码，或 `login --browser chromium|chrome|edge|firefox|webkit` 打开独立的官方窗口。用户自行完成密码和验证码；不索取这些内容。
+首次使用 `login` 扫码，或 `login --browser chromium|chrome|edge|brave|vivaldi|opera|arc|firefox|webkit|firefox-system|safari` 打开独立的官方窗口。系统 Firefox 需要 geckodriver；Safari 在 macOS 使用 safaridriver，首次需开启远程自动化。便携程序用 `--executable-path`，原生驱动用 `--driver-path`。用户自行完成密码和验证码；不索取这些内容。
 
 `media inspect <文件>` 不需要登录或上传。`media upload` 只在用户明确要求时上传媒体。只有需要提交的有效文件才进入上传，社区或话题无效时不继续发布。
 

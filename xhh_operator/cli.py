@@ -82,6 +82,7 @@ def parser():
     login.add_argument("--qr-file", type=Path, help="临时二维码 PNG 路径；命令结束时删除")
     login.add_argument("--channel", choices=(*CHANNELS, "chromium"), help="Chrome/Edge 的安装通道")
     login.add_argument("--executable-path", type=Path, help="自定义浏览器可执行文件")
+    login.add_argument("--driver-path", type=Path, help="系统 Firefox 或 Safari 的 WebDriver 路径")
     sub.add_parser("browsers", help="查看支持的浏览器和本机可用状态")
     doctor = sub.add_parser("doctor", help="本地诊断，默认不读取会话内容")
     doctor.add_argument("--verify-login", action="store_true", help="显式校验已保存的登录态")
@@ -222,16 +223,17 @@ async def run(args):
         return install_skill(args.destination)
     if args.command == "login":
         if args.cookie_file:
-            if args.channel or args.executable_path:
+            if args.channel or args.executable_path or args.driver_path:
                 raise ValueError("导入 Cookie 时不能指定浏览器参数。")
             return await import_cookies(store, args.cookie_file)
-        if args.browser or args.channel or args.executable_path:
+        if args.browser or args.channel or args.executable_path or args.driver_path:
             return await login_browser(
                 store,
                 timeout=args.timeout,
                 browser_name=args.browser,
                 channel=args.channel,
                 executable_path=args.executable_path,
+                driver_path=args.driver_path,
             )
         return await login_qr(store, timeout=args.timeout, qr_file=args.qr_file)
     if args.command == "browsers":

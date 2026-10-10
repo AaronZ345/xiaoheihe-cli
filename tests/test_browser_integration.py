@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from xhh_operator import auth
-from xhh_operator.browsers import choices, launch_browser, system_browser
+from xhh_operator.browsers import NAMED_BROWSERS, choices, launch_browser, system_browser
 from xhh_operator.http import HeyboxAPI
 from xhh_operator.session import SessionStore
 
@@ -37,10 +37,14 @@ def cached_binary(expected, engine):
     pytest.skip("browser runtime not installed")
 
 
-@pytest.mark.parametrize("browser_name", ["chromium", "firefox", "webkit", "chrome", "msedge"])
+@pytest.mark.parametrize(
+    "browser_name", ["chromium", "firefox", "webkit", "chrome", "msedge", *NAMED_BROWSERS]
+)
 def test_real_engine_completes_isolated_login_with_fixture_data(
     browser_name, tmp_path, monkeypatch
 ):
+    if browser_name in NAMED_BROWSERS and not system_browser(browser_name):
+        pytest.skip("named system browser not installed")
     choice = choices(browser_name, environment={})[0]
     engine = choice.engine
     observed = []
@@ -51,8 +55,8 @@ def test_real_engine_completes_isolated_login_with_fixture_data(
         await request.fulfill(status=200, content_type="text/html; charset=utf-8", body=html)
 
     async def fixture_launch(playwright, **kwargs):
-        if choice.channel:
-            path = system_browser(choice.channel)
+        if choice.channel or choice.product:
+            path = system_browser(choice.channel or choice.product)
             if not path or not path.is_file():
                 pytest.skip("named system browser not installed")
             browser, name = await original_launch(
@@ -96,5 +100,5 @@ def test_real_engine_completes_isolated_login_with_fixture_data(
     store = SessionStore(tmp_path / "session")
     result = asyncio.run(auth.login_browser(store, timeout=5, browser_name=browser_name))
     assert result["authenticated"] and result["user_id"] == "42"
-    assert result["browser"] == (choice.channel or "custom-" + engine)
+    assert result["browser"] == (choice.product or choice.channel or "custom-" + engine)
     assert store.load()["user_id"] == "42" and len(observed) == 1

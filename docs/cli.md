@@ -1,5 +1,18 @@
 # 命令参考
 
+## 浏览器登录
+
+```bash
+xiaoheihe-cli browsers
+xiaoheihe-cli login --browser chrome
+xiaoheihe-cli login --browser edge
+xiaoheihe-cli login --browser brave
+xiaoheihe-cli login --browser firefox-system --driver-path /path/to/geckodriver
+xiaoheihe-cli login --browser safari
+```
+
+系统、安装通道、便携程序及驱动配置见 [浏览器登录](browser-login.md)。
+
 ## 个人游戏记录和短评
 
 ```bash

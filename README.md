@@ -25,6 +25,7 @@
 | 评论与回复 | 文字和图片评论；按 ID 或完整正文定位目标，重复正文不自动选择 |
 | 批量与导出 | 评论分页、批量帖子、创作者数据、JSON／表格／CSV、文件输出 |
 | 助手接入 | 18 个 MCP 工具、Agent Skill、本地诊断与 REST 服务 |
+| 浏览器登录 | macOS／Windows／Linux 的 Chrome、Edge、Chromium、Brave、Vivaldi、Opera、Firefox；macOS Safari、macOS／Windows Arc；支持便携程序和自定义路径 |
 
 ## 安装
 
@@ -49,6 +50,8 @@ uv run xiaoheihe-cli doctor
 本地 wheel 也可以用 `uv tool install /path/to/xiaoheihe_cli-0.1.0-py3-none-any.whl` 安装。
 
 `xiaoheihe` 是兼容命令别名。网页登录可使用已安装的 Chrome 或 Edge；需要配套引擎时，在工具环境运行 `playwright install chromium`。源码环境可执行 `uv run playwright install chromium firefox webkit`。这些操作不读取日常浏览器的个人资料。
+
+更多浏览器可用 `login --browser brave|vivaldi|opera|arc|firefox-system|safari` 选择；安装路径、系统 Firefox 驱动和 Safari 首次设置见 [浏览器登录](docs/browser-login.md)。
 
 ## 常用命令
 

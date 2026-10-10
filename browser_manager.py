@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 from typing import List, Optional
 
@@ -184,7 +185,7 @@ class BrowserManager:
 
     async def _launch_browser(self, headless: Optional[bool] = None):
         """使用与 CLI 登录一致的浏览器选择、环境配置和错误处理。"""
-        from xhh_operator.browsers import launch_browser
+        from xhh_operator.browsers import NATIVE_BROWSERS, launch_browser
 
         if self._context:
             return
@@ -192,7 +193,9 @@ class BrowserManager:
             self._playwright = await async_playwright().start()
         try:
             self._browser, selected = await launch_browser(
-                self._playwright, headless=self.headless if headless is None else headless
+                self._playwright,
+                headless=self.headless if headless is None else headless,
+                browser="auto" if os.environ.get("XHH_BROWSER_ENGINE") in NATIVE_BROWSERS else None,
             )
             logger.info("浏览器已启动：%s", selected)
             self._context = await self._browser.new_context()

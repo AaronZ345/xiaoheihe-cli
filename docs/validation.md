@@ -7,8 +7,8 @@
 | 环境或检查 | 结果 |
 |---|---|
 | GitHub CI：三系统 × Python 3.11／3.12／3.13 | 九组全部通过 |
-| CI 测试数量 | macOS／Linux 每组 134 通过、5 跳过；Windows 每组 133 通过、6 跳过 |
-| Python 3.13.5，本机启用浏览器测试 | 138 通过，1 个 Edge 测试跳过 |
+| 初次 CI 测试数量 | macOS／Linux 每组 134 通过、5 跳过；Windows 每组 133 通过、6 跳过 |
+| Python 3.13.5，本轮启用浏览器测试 | 218 通过，8 跳过；系统未安装的命名浏览器和单独启用的原生测试按条件跳过 |
 | GitHub Linux 浏览器任务 | 5 项通过；Chromium、Chrome、Edge、Firefox、WebKit 合成登录流程通过 |
 | Docker 自动检查 | CI 构建镜像并检查命令启动、会话卷写入和无网络 Chromium 页面；结果见 [CI](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml) |
 | Ruff、锁文件、wheel 与源码包构建 | 通过 |
@@ -81,3 +81,10 @@ Windows 初次执行暴露中文文件的默认编码问题，修复后九组矩
 | 默认诊断和验证 | 诊断不读取登录内容；统一验收只使用合成文件、模拟账号和本地协议服务 |
 
 社区最多 2 个、话题最多 5 个；匹配必须唯一。上传失败后不继续发布，未知写入不重发。上述边界同样适用于 CLI、SDK、REST 和 MCP。
+
+## 三系统浏览器扩展
+
+- 安装路径测试覆盖 Chrome／Edge 各通道、Brave、Vivaldi、Opera、Arc、系统 Chromium 和系统 Firefox，分别模拟 macOS 用户安装、Windows 三类安装目录和 Linux PATH。
+- WebDriver 契约测试核验本机连接、全新会话、Cookie 过滤、一次创建、错误脱敏和进程清理。
+- 原生浏览器测试只访问临时本机页面，账号核验使用合成响应。macOS 本机 Safari 返回首次远程自动化设置要求，配置要求有明确提示。
+- 浏览器 CI 使用三系统独立环境；macOS 环境配置 Safari，Linux 环境安装 Brave，并测试各系统原生 Firefox。运行记录见 [浏览器任务](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml)。

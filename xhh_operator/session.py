@@ -16,6 +16,8 @@ def private_home() -> Path:
         return Path(root).expanduser()
     if sys.platform == "darwin":
         return Path.home() / "Library/Application Support/xiaoheihe-cli"
+    if sys.platform == "win32":
+        return Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData/Local")) / "xiaoheihe-cli"
     return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "xiaoheihe-cli"
 
 

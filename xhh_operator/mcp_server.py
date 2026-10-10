@@ -65,11 +65,22 @@ def create_server(*, port=8001):
         }
 
     @server.tool(name="interactive_login", annotations=writing)
-    async def interactive_login(browser: str = "auto", timeout: int = 300) -> dict:
+    async def interactive_login(
+        browser: str = "auto",
+        timeout: int = 300,
+        executable_path: str | None = None,
+        driver_path: str | None = None,
+    ) -> dict:
         """打开独立的官方登录窗口，由用户完成登录和验证码。"""
         if not 1 <= timeout <= 600:
             raise ValueError("登录等待时间无效。")
-        return await login_browser(SessionStore(), timeout=timeout, browser_name=browser)
+        return await login_browser(
+            SessionStore(),
+            timeout=timeout,
+            browser_name=browser,
+            executable_path=executable_path,
+            driver_path=driver_path,
+        )
 
     @server.tool(name="get_login_qr_code", annotations=writing)
     async def get_login_qr_code(timeout: int = 180):
