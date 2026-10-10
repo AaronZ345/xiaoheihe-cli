@@ -11,47 +11,21 @@
 - 密码登录通过拦截前端 JS 提交的请求完成，不自己拼参数
 - 登录成功后自动保存 Cookie，后续命令无需再登录
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import os
 import re
-import shlex
-import sys
-from pathlib import Path
-from typing import Optional, List
+from typing import List, Optional
 
-from playwright.async_api import async_playwright, Browser, BrowserContext
+from playwright.async_api import Browser, BrowserContext, async_playwright
 
 logger = logging.getLogger(__name__)
 
 _BASE_URL = "https://www.xiaoheihe.cn"
 _API_BASE = "https://api.xiaoheihe.cn"
-
-
-def _is_linux() -> bool:
-    return sys.platform.startswith("linux")
-
-
-def _has_display_server() -> bool:
-    return any(os.environ.get(name) for name in ("DISPLAY", "WAYLAND_DISPLAY", "MIR_SOCKET"))
-
-
-def _is_root_user() -> bool:
-    geteuid = getattr(os, "geteuid", None)
-    if not callable(geteuid):
-        return False
-    try:
-        return geteuid() == 0
-    except Exception:
-        return False
-
-
-def _env_flag(name: str) -> bool:
-    value = os.environ.get(name, "").strip().lower()
-    return value in {"1", "true", "yes", "on"}
 
 
 class BrowserManager:
@@ -60,6 +34,9 @@ class BrowserManager:
     COOKIES_FILE = "cookies.json"
 
     def __init__(self, headless: bool = False):
+        from xhh_operator.session import SessionStore
+
+        self.COOKIES_FILE = str(SessionStore().path)
         self.headless = headless
         self._playwright = None
         self._browser: Optional[Browser] = None
@@ -103,7 +80,7 @@ class BrowserManager:
             raise RuntimeError(
                 "未找到有效 Cookie，且当前为无头模式，无法进入手动登录。"
                 "请先使用 `xiaoheihe login --cookie-file <path>` 导入 Cookie，"
-                "或执行 `xiaoheihe login --phone <手机号> --password <密码> --headless`。"
+                "或在桌面环境执行 `xiaoheihe login --browser`。"
             )
 
         # 无有效 Cookie，打开浏览器让用户登录
@@ -144,6 +121,7 @@ class BrowserManager:
     @staticmethod
     def _parse_cookie_string(cookie_string: str) -> List[dict]:
         from urllib.parse import unquote
+
         cookies = []
         for pair in cookie_string.split(";"):
             pair = pair.strip()
@@ -152,56 +130,32 @@ class BrowserManager:
             name, value = pair.split("=", 1)
             name, value = name.strip(), unquote(value.strip())
             if name:
-                cookies.append({
-                    "name": name, "value": value,
-                    "domain": ".xiaoheihe.cn", "path": "/",
-                    "sameSite": "Lax", "secure": False,
-                })
+                cookies.append(
+                    {
+                        "name": name,
+                        "value": value,
+                        "domain": ".xiaoheihe.cn",
+                        "path": "/",
+                        "sameSite": "Lax",
+                        "secure": False,
+                    }
+                )
         return cookies
 
     async def _verify_cookies(self) -> bool:
-        """验证 Cookie 是否有效"""
+        """通过账号接口验证身份，公开帖子成功不能代表已登录。"""
+        from xhh_operator.auth import verify
+        from xhh_operator.errors import AuthError
+        from xhh_operator.http import HeyboxAPI
+
         if not self._cookies:
             return False
-
-        if not self._context:
-            await self._launch_browser(headless=True)
-
-        captured = [None]
-        verified = asyncio.Event()
-
-        async def on_response(response):
-            if "/bbs/app/link/tree" in response.url:
-                try:
-                    body = await response.text()
-                    captured[0] = json.loads(body)
-                    verified.set()
-                except Exception:
-                    pass
-
         try:
-            test_page = await self._context.new_page()
-            test_page.on("response", on_response)
-            try:
-                await test_page.goto(
-                    f"{_BASE_URL}/app/bbs/link/179245676",
-                    wait_until="domcontentloaded", timeout=15000,
-                )
-                try:
-                    await asyncio.wait_for(verified.wait(), timeout=8.0)
-                except asyncio.TimeoutError:
-                    await asyncio.sleep(2)
-            finally:
-                try:
-                    test_page.remove_listener("response", on_response)
-                except Exception:
-                    pass
-                await test_page.close()
-
-            data = captured[0]
-            return data is not None and data.get("status") == "ok"
-        except Exception as e:
-            logger.warning("Cookie 验证失败: %s", e)
+            async with HeyboxAPI(self._cookies) as api:
+                self._heybox_id = await verify(api, self._heybox_id)
+            return True
+        except AuthError:
+            logger.error("认证失败，请执行 xiaoheihe login。")
             return False
 
     async def validate_cookies(self) -> bool:
@@ -229,144 +183,38 @@ class BrowserManager:
         self._api_page = await self._context.new_page()
 
     async def _launch_browser(self, headless: Optional[bool] = None):
-        """统一浏览器启动逻辑，优先使用本机 Chrome，失败时回退 Playwright Chromium。"""
+        """使用与 CLI 登录一致的浏览器选择、环境配置和错误处理。"""
+        from xhh_operator.browsers import launch_browser
+
         if self._context:
             return
-
         if self._playwright is None:
             self._playwright = await async_playwright().start()
-
-        launch_headless = self.headless if headless is None else headless
-        if not launch_headless and _is_linux() and not _has_display_server():
-            raise RuntimeError(
-                "当前 Linux 环境未检测到 DISPLAY/WAYLAND_DISPLAY，无法打开图形浏览器。"
-                "请改用 `--headless`、导入 Cookie，或在 Xvfb/桌面会话中运行。"
+        try:
+            self._browser, selected = await launch_browser(
+                self._playwright, headless=self.headless if headless is None else headless
             )
-
-        launch_args = []
-        if _is_linux():
-            launch_args.extend(["--disable-dev-shm-usage", "--disable-gpu"])
-            if _is_root_user() or _env_flag("XHH_BROWSER_NO_SANDBOX"):
-                launch_args.extend(["--no-sandbox", "--disable-setuid-sandbox"])
-
-        extra_args = os.environ.get("XHH_BROWSER_ARGS", "").strip()
-        if extra_args:
-            launch_args.extend(shlex.split(extra_args))
-
-        # Remove duplicates while keeping original order.
-        launch_args = list(dict.fromkeys(launch_args))
-        base_options = {
-            "headless": launch_headless,
-            "args": launch_args,
-        }
-
-        executable_path = os.environ.get("XHH_BROWSER_EXECUTABLE", "").strip()
-        browser_channel = os.environ.get("XHH_BROWSER_CHANNEL", "").strip()
-        candidates: list[tuple[str, dict]] = []
-
-        if executable_path:
-            candidates.append((
-                f"executable:{executable_path}",
-                {**base_options, "executable_path": executable_path},
-            ))
-        elif browser_channel:
-            candidates.append((
-                f"channel:{browser_channel}",
-                {**base_options, "channel": browser_channel},
-            ))
-        elif _is_linux():
-            candidates.extend([
-                ("playwright-chromium", dict(base_options)),
-                ("chrome", {**base_options, "channel": "chrome"}),
-            ])
-        else:
-            candidates.extend([
-                ("chrome", {**base_options, "channel": "chrome"}),
-                ("playwright-chromium", dict(base_options)),
-            ])
-
-        launch_errors = []
-        for candidate_name, candidate_options in candidates:
-            try:
-                logger.info("尝试启动浏览器: %s (headless=%s)", candidate_name, launch_headless)
-                self._browser = await self._playwright.chromium.launch(**candidate_options)
-                break
-            except Exception as exc:
-                launch_errors.append(f"{candidate_name}: {exc}")
-                logger.warning("浏览器启动失败 (%s): %s", candidate_name, exc)
-
-        if not self._browser:
-            raise RuntimeError(
-                "无法启动浏览器。请先执行 `playwright install chromium`，"
-                "或通过 `XHH_BROWSER_EXECUTABLE` 指定浏览器路径。"
-                f" 最近错误: {' | '.join(launch_errors[-2:])}"
-            )
-
-        self._context = await self._browser.new_context()
-        if self._cookies:
-            await self._context.add_cookies(self._cookies)
+            logger.info("浏览器已启动：%s", selected)
+            self._context = await self._browser.new_context()
+            if self._cookies:
+                await self._context.add_cookies(self._cookies)
+        except BaseException:
+            await self._shutdown()
+            raise
 
     # ==================== 登录流程 ====================
 
     async def open_browser_for_login(self):
-        """打开浏览器等待用户手动登录，轮询检测 Cookie"""
+        from xhh_operator.auth import login_browser
+        from xhh_operator.session import SessionStore
+
         if self.headless:
-            raise RuntimeError(
-                "当前为无头模式，无法进行手动登录。"
-                "纯命令行 Linux 建议使用密码登录或 `xiaoheihe login --cookie-file <path>`。"
-            )
-
-        print("\n" + "=" * 60)
-        print("需要登录")
-        print("正在打开浏览器，请在浏览器中完成登录...")
-        print("=" * 60 + "\n")
-
-        await self._launch_browser(headless=self.headless)
-
-        page = await self._context.new_page()
-        await page.goto(f"{_BASE_URL}/home", wait_until="domcontentloaded", timeout=30000)
-        logger.info("浏览器已打开，等待用户登录...")
-
-        max_wait, check_interval = 300, 3
-        for elapsed in range(0, max_wait, check_interval):
-            await asyncio.sleep(check_interval)
-            captured = [None]
-
-            async def on_check(response):
-                if "/bbs/app/link/tree" in response.url:
-                    try:
-                        captured[0] = json.loads(await response.text())
-                    except Exception:
-                        pass
-
-            check_page = await self._context.new_page()
-            listener = check_page.on("response", on_check)
-            try:
-                await check_page.goto(f"{_BASE_URL}/app/bbs/link/179245676",
-                                     wait_until="domcontentloaded", timeout=15000)
-                await asyncio.sleep(3)
-                status = (captured[0] or {}).get("status", "")
-                if status == "ok":
-                    logger.info("检测到有效 Cookie！")
-                    self._cookies = await self._context.cookies()
-                    self._heybox_id = self._extract_heybox_id(self._cookies)
-                    self._save_cookies(self._cookies)
-                    print(f"\n  ✅ 登录成功! 用户 ID: {self._heybox_id}")
-                    await page.close()
-                    await check_page.close()
-                    await self._ensure_api_page()
-                    return
-            except Exception:
-                pass
-            finally:
-                try:
-                    check_page.remove_listener("response", on_check)
-                except Exception:
-                    pass
-                await check_page.close()
-
-        logger.warning("超时 (%ds)", max_wait)
-        await page.close()
+            raise RuntimeError("请先执行 xiaoheihe login 登录，再启动无头任务。")
+        store = SessionStore()
+        await login_browser(store)
+        session = store.require()
+        self._cookies, self._heybox_id = session["cookies"], session["user_id"]
+        await self._ensure_api_page()
 
     async def api_login(self, phone: str, password: str) -> bool:
         """
@@ -382,7 +230,7 @@ class BrowserManager:
         所有签名参数(hkey/nonce/_time)、加密逻辑、额外字段均由前端原生处理。
         """
         print("\n" + "=" * 60)
-        print(f"📱 小黑盒密码登录")
+        print("📱 小黑盒密码登录")
         print(f"   号码: {phone}")
         print("=" * 60)
 
@@ -409,23 +257,36 @@ class BrowserManager:
 
         try:
             # 3. 导航到登录页（直接用独立登录页，不走 /home 弹窗）
-            await page.goto("https://login.xiaoheihe.cn/", wait_until="domcontentloaded", timeout=30000)
+            await page.goto(
+                "https://login.xiaoheihe.cn/", wait_until="domcontentloaded", timeout=30000
+            )
             await asyncio.sleep(2)
 
             # 4. 切换密码 tab
             await self._switch_pwd_tab(page)
 
             # 6. 填手机号
-            phone_clean = re.sub(r'^[+]?86\s*', '', phone.strip())
-            if not await self._fill_input(page, phone_clean,
-                  ['input[type="tel"]', 'input[inputmode="tel"]', 'input[name="phone"]',
-                   'input[type="text"]'], "手机号"):
+            phone_clean = re.sub(r"^[+]?86\s*", "", phone.strip())
+            if not await self._fill_input(
+                page,
+                phone_clean,
+                [
+                    'input[type="tel"]',
+                    'input[inputmode="tel"]',
+                    'input[name="phone"]',
+                    'input[type="text"]',
+                ],
+                "手机号",
+            ):
                 raise RuntimeError("未找到手机号输入框")
 
             # 7. 填密码
-            if not await self._fill_input(page, password,
-                  ['input[type="password"]', 'input[name="password"]',
-                   'input[placeholder*="密码"]'], "密码"):
+            if not await self._fill_input(
+                page,
+                password,
+                ['input[type="password"]', 'input[name="password"]', 'input[placeholder*="密码"]'],
+                "密码",
+            ):
                 raise RuntimeError("未找到密码输入框")
 
             # 8. 勾选协议
@@ -462,15 +323,16 @@ class BrowserManager:
             self._cookies = cookies
             account_detail = data.get("account_detail", {})
             profile = data.get("profile", {})
-            username = (account_detail.get("username") or profile.get("nickname") or "")
-            self._heybox_id = (
-                str(account_detail.get("userid", ""))
-                or self._extract_heybox_id(cookies)
+            username = account_detail.get("username") or profile.get("nickname") or ""
+            self._heybox_id = str(account_detail.get("userid", "")) or self._extract_heybox_id(
+                cookies
             )
+            if not await self._verify_cookies():
+                return False
             self._save_cookies(cookies)
 
             print(f"\n{'=' * 60}")
-            print(f"  ✅ 登录成功!")
+            print("  ✅ 登录成功!")
             print(f"  用户: {username} (ID: {self._heybox_id})")
             print(f"{'=' * 60}\n")
 
@@ -481,7 +343,7 @@ class BrowserManager:
                 logger.warning("API 会话启动异常: %s", e)
             return True
         else:
-            msg = data.get("msg") or data.get("message") or json.dumps(data)[:150]
+            msg = "认证失败，请在官方网页登录并完成验证。"
             print(f"\n  ❌ 登录失败: {msg}")
             return await self._fallback_manual(page)
 
@@ -516,23 +378,44 @@ class BrowserManager:
             await self._switch_pwd_tab(page)
 
         # 填手机号
-        phone_clean = re.sub(r'^[+]?86\s*', '', phone.strip())
-        await self._fill_input(page, phone_clean,
-            ['input[type="tel"]', 'input[inputmode="tel"]', 'input[name="phone"]', 'input[type="text"]'],
-            "手机号", required=False)
+        phone_clean = re.sub(r"^[+]?86\s*", "", phone.strip())
+        await self._fill_input(
+            page,
+            phone_clean,
+            [
+                'input[type="tel"]',
+                'input[inputmode="tel"]',
+                'input[name="phone"]',
+                'input[type="text"]',
+            ],
+            "手机号",
+            required=False,
+        )
 
         if password:
-            await self._fill_input(page, password,
-                ['input[type="password"]', 'input[name="password"]'], "密码", required=False)
+            await self._fill_input(
+                page,
+                password,
+                ['input[type="password"]', 'input[name="password"]'],
+                "密码",
+                required=False,
+            )
         else:
             # 发验证码
             await self._click_send_code(page)
-            code = (await code_callback() if code_callback else input("请输入验证码: ").strip()) or ""
+            code = (
+                await code_callback() if code_callback else input("请输入验证码: ").strip()
+            ) or ""
             if len(code) < 4:
-                print("❌ 验证码无效"); return False
-            await self._fill_input(page, code,
+                print("❌ 验证码无效")
+                return False
+            await self._fill_input(
+                page,
+                code,
                 ['input[type="number"]', 'input[inputmode="numeric"]', 'input[name="code"]'],
-                "验证码", required=False)
+                "验证码",
+                required=False,
+            )
 
         await self._check_agreement(page)
         await _click_submit_btn(page)
@@ -544,9 +427,13 @@ class BrowserManager:
             hid = self._extract_heybox_id(cookies)
             if hid:
                 self._cookies, self._heybox_id = cookies, hid
+                if not await self._verify_cookies():
+                    return False
                 self._save_cookies(cookies)
                 print(f"\n✅ 登录成功! ID: {hid}")
-                await page.close(); await self._ensure_api_page(); return True
+                await page.close()
+                await self._ensure_api_page()
+                return True
 
         print("\n❌ 登录超时")
         return False
@@ -557,8 +444,7 @@ class BrowserManager:
     async def _click_login_entry(page) -> bool:
         """点击页面上的登录按钮打开登录弹窗"""
         # 优先使用精确选择器（用户确认的 DOM 结构）
-        for sel in ['button.login-btn', '[class*="login-btn"]',
-                     'text="登录"', 'a[href*="login"]']:
+        for sel in ["button.login-btn", '[class*="login-btn"]', 'text="登录"', 'a[href*="login"]']:
             try:
                 el = await page.wait_for_selector(sel, timeout=2000)
                 if el and await el.is_visible():
@@ -574,19 +460,21 @@ class BrowserManager:
     @staticmethod
     async def _switch_pwd_tab(page):
         """切换到密码登录 tab"""
-        for sel in ['text="密码登录"', 'text="密码"',
-                     ':has-text("密码"):not(:has-text("验证"))']:
+        for sel in ['text="密码登录"', 'text="密码"', ':has-text("密码"):not(:has-text("验证"))']:
             try:
                 el = await page.query_selector(sel)
                 if el and await el.is_visible():
                     await el.click(timeout=2000)
                     logger.info("切换到密码登录 tab")
-                    await asyncio.sleep(1); return
+                    await asyncio.sleep(1)
+                    return
             except Exception:
                 continue
 
     @staticmethod
-    async def _fill_input(page, value: str, selectors: list, label: str, required: bool = True) -> bool:
+    async def _fill_input(
+        page, value: str, selectors: list, label: str, required: bool = True
+    ) -> bool:
         """尝试用多个选择器填充输入框"""
         for sel in selectors:
             try:
@@ -604,15 +492,21 @@ class BrowserManager:
     @staticmethod
     async def _check_agreement(page):
         """勾选同意协议"""
-        for sel in ['input[type="checkbox"]', '.el-checkbox__inner', 'input[name="agree"]',
-                     '[class*="agree"] [class*="check"]', '[class*="check"]']:
+        for sel in [
+            'input[type="checkbox"]',
+            ".el-checkbox__inner",
+            'input[name="agree"]',
+            '[class*="agree"] [class*="check"]',
+            '[class*="check"]',
+        ]:
             try:
                 el = await page.query_selector(sel)
                 if el and await el.is_visible():
                     checked = await el.evaluate("e => e.checked")
                     if not checked:
                         await el.click(timeout=2000)
-                        logger.info("已勾选协议"); await asyncio.sleep(0.5)
+                        logger.info("已勾选协议")
+                        await asyncio.sleep(0.5)
                     return
             except Exception:
                 continue
@@ -624,7 +518,8 @@ class BrowserManager:
                 el = await page.query_selector(sel)
                 if el and await el.is_visible():
                     await el.click(timeout=3000)
-                    logger.info("已点击发送验证码"); return
+                    logger.info("已点击发送验证码")
+                    return
             except Exception:
                 continue
         # JS 兜底
@@ -647,10 +542,15 @@ class BrowserManager:
             hid = self._extract_heybox_id(cookies)
             if hid:
                 self._cookies, self._heybox_id = cookies, hid
+                if not await self._verify_cookies():
+                    return False
                 self._save_cookies(cookies)
                 print(f"\n✅ 手动登录成功! ID: {hid}")
-                await page.close(); await self._ensure_api_page(); return True
-        print("\n❌ 等待超时"); return False
+                await page.close()
+                await self._ensure_api_page()
+                return True
+        print("\n❌ 等待超时")
+        return False
 
     # ==================== Cookie 刷新 & 关闭 ====================
 
@@ -693,30 +593,14 @@ class BrowserManager:
     # ==================== Cookie 持久化 ====================
 
     def _load_cookies(self) -> List[dict]:
-        p = Path(self.COOKIES_FILE)
-        if p.exists():
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.warning("加载 Cookie 失败: %s", e)
-        return []
+        from xhh_operator.session import SessionStore
+
+        return (SessionStore().load() or {}).get("cookies", [])
 
     def _save_cookies(self, cookies: List[dict]):
-        p = Path(self.COOKIES_FILE)
-        with open(p, "w", encoding="utf-8") as f:
-            json.dump(cookies, f, ensure_ascii=False, indent=2)
-        # 同时写入 ~/.xhh_cookie 供 CLI 命令（get/list/pub 等）复用登录态
-        try:
-            from config import save_cookie
-            cookie_str = "; ".join(
-                f"{c['name']}={c['value']}"
-                for c in cookies if c.get("name") and c.get("value")
-            )
-            if cookie_str:
-                save_cookie(cookie_str)
-        except Exception as e:
-            logger.warning("同步写入 ~/.xhh_cookie 失败: %s", e)
+        from xhh_operator.session import SessionStore
+
+        SessionStore().save(cookies, self._extract_heybox_id(cookies) or "")
 
     @staticmethod
     def _extract_heybox_id(cookies: List[dict]) -> Optional[str]:
@@ -748,8 +632,12 @@ async def _click_submit_btn(page) -> bool:
         pass
 
     # B: CSS 选择器
-    for sel in ['button[type="submit"]', '[class*="submit"]', '[class*="login-btn"]',
-                 'button.el-button--primary']:
+    for sel in [
+        'button[type="submit"]',
+        '[class*="submit"]',
+        '[class*="login-btn"]',
+        "button.el-button--primary",
+    ]:
         try:
             el = await page.query_selector(sel)
             if el and await el.is_visible():

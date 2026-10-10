@@ -2,21 +2,23 @@
 小黑盒爬虫API服务器 - 重构版
 使用浏览器获取 Cookie 持久化，直接调用后端 API
 """
-from fastapi import FastAPI, HTTPException, Query, BackgroundTasks
-from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
-from typing import List, Optional
-from pydantic import BaseModel, Field
-import uvicorn
-import asyncio
-import os
-import logging
-from contextlib import asynccontextmanager
 
-from browser_manager import BrowserManager
+import asyncio
+import logging
+import os
+from contextlib import asynccontextmanager
+from typing import List, Optional
+
+import uvicorn
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse, JSONResponse
+from pydantic import BaseModel, Field
+
 from api_client import XiaoheiheAPIClient
+from browser_manager import BrowserManager
 from data_parser import DataParser
-from models import Post, Comment
+from xhh_operator.errors import OperatorError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,14 +66,14 @@ app = FastAPI(
     title="小黑盒爬虫API",
     description="小黑盒帖子和评论爬取服务（Cookie持久化 + 后端API直连）",
     version="2.0.0",
-    docs_url=None,
+    docs_url="/docs",
     redoc_url=None,
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://127.0.0.1:8010", "http://localhost:8010"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -104,6 +106,11 @@ def _extract_link_id(value: str) -> str:
         if match:
             return match.group(1)
     return value
+
+
+def operator_http_error(error):
+    status = {"auth": 401, "captcha": 428, "rate_limit": 429, "network": 503}.get(error.code, 502)
+    return HTTPException(status_code=status, detail={"code": error.code, "message": str(error)})
 
 
 @app.get("/", tags=["首页"])
@@ -208,13 +215,13 @@ async def get_post(post_id: str):
 
     except HTTPException:
         raise
+    except OperatorError as error:
+        raise operator_http_error(error) from None
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
 
 
-@app.get(
-    "/api/post/{post_id}/comments", response_model=CommentsResponse, tags=["评论"]
-)
+@app.get("/api/post/{post_id}/comments", response_model=CommentsResponse, tags=["评论"])
 async def get_post_comments(
     post_id: str,
     page: int = Query(1, ge=1, description="页码（从1开始）"),
@@ -259,6 +266,8 @@ async def get_post_comments(
 
     except HTTPException:
         raise
+    except OperatorError as error:
+        raise operator_http_error(error) from None
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
 
@@ -297,48 +306,38 @@ async def get_post_with_comments(post_id: str):
 
     except HTTPException:
         raise
+    except OperatorError as error:
+        raise operator_http_error(error) from None
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
 
 
 @app.post("/api/posts/batch", tags=["帖子"])
-async def batch_crawl_posts(
-    request: BatchPostRequest, background_tasks: BackgroundTasks
-):
-    """
-    批量爬取多个帖子
+async def batch_crawl_posts(request: BatchPostRequest, background_tasks: BackgroundTasks):
+    """串行读取帖子并返回结果；任一失败即停。"""
+    from xhh_operator.session import safe_result
 
-    请求体示例：
-    ```json
-    {
-        "urls": [
-            "179245676",
-            "https://www.xiaoheihe.cn/app/bbs/link/179290771"
-        ]
-    }
-    ```
-
-    返回：任务已提交的信息（后台处理）
-    """
+    if not 1 <= len(request.urls) <= 100:
+        raise HTTPException(status_code=400, detail="批量读取需要 1 到 100 个帖子。")
+    results = []
     try:
-
-        async def batch_task():
-            for url in request.urls:
-                link_id = _extract_link_id(url)
-                await api_client.get_post_comments(link_id, page_num=1, limit=20)
-                await asyncio.sleep(2.0)
-
-        background_tasks.add_task(batch_task)
-
+        for index, url in enumerate(request.urls):
+            if index:
+                await asyncio.sleep(2)
+            response = await api_client.get_post_comments(
+                _extract_link_id(url), page_num=1, limit=20
+            )
+            if not response:
+                raise HTTPException(status_code=502, detail="帖子读取失败，已停止后续请求。")
+            results.append(safe_result(response))
         return {
             "success": True,
-            "message": f"已提交{len(request.urls)}个帖子的爬取任务",
-            "task_count": len(request.urls),
-            "note": "任务在后台执行",
+            "message": "批量读取完成",
+            "task_count": len(results),
+            "data": results,
         }
-
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
+    except OperatorError as exc:
+        raise operator_http_error(exc) from None
 
 
 @app.post("/api/cookies/refresh", tags=["系统"])
@@ -369,6 +368,8 @@ async def refresh_cookies():
 
     except HTTPException:
         raise
+    except OperatorError as error:
+        raise operator_http_error(error) from None
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"服务器错误: {str(e)}")
 
@@ -387,6 +388,226 @@ async def health_check():
     )
 
 
+class ReviewWriteRequest(BaseModel):
+    score: int = Field(..., ge=1, le=5, strict=True)
+    text: str = Field(..., min_length=1)
+    dry_run: bool = False
+
+
+class ReviewEditRequest(BaseModel):
+    score: Optional[int] = Field(None, ge=1, le=5, strict=True)
+    text: Optional[str] = Field(None, min_length=1)
+    dry_run: bool = False
+
+
+async def operator_call(method, *args, **kwargs):
+    from xhh_operator.service import Operator
+    from xhh_operator.session import safe_result
+
+    try:
+        async with Operator() as operator:
+            result = await getattr(operator, method)(*args, **kwargs)
+        return {"ok": True, "data": safe_result(result)}
+    except OperatorError as exc:
+        raise operator_http_error(exc) from None
+    except ValueError:
+        raise HTTPException(status_code=400, detail="无效的操作参数。") from None
+
+
+@app.get("/api/games")
+async def personal_games(offset: int = 0, limit: int = 20):
+    if offset < 0 or not 1 <= limit <= 100:
+        raise HTTPException(status_code=400, detail="分页参数无效。")
+    return await operator_call("games", offset=offset, limit=limit)
+
+
+@app.get("/api/reviews")
+async def personal_reviews(
+    platform: str = "steam", offset: int = 0, limit: int = 20, summary: bool = False
+):
+    if offset < 0 or not 1 <= limit <= 100:
+        raise HTTPException(status_code=400, detail="分页参数无效。")
+    return await operator_call(
+        "reviews", platform=platform, offset=offset, limit=limit, summary=summary
+    )
+
+
+@app.get("/api/reviews/{appid}")
+async def personal_review(appid: str):
+    from xhh_operator.service import present_review
+
+    result = await operator_call("review", appid)
+    result["data"] = present_review(result["data"])
+    return result
+
+
+@app.post("/api/reviews/{appid}")
+async def create_personal_review(appid: str, body: ReviewWriteRequest):
+    return await operator_call(
+        "write_review", appid, score=body.score, content=body.text, dry_run=body.dry_run
+    )
+
+
+@app.patch("/api/reviews/{appid}")
+async def edit_personal_review(appid: str, body: ReviewEditRequest):
+    if body.score is None and body.text is None:
+        raise HTTPException(status_code=400, detail="请提供评分或正文。")
+    return await operator_call(
+        "write_review", appid, score=body.score, content=body.text, edit=True, dry_run=body.dry_run
+    )
+
+
+@app.delete("/api/reviews/{appid}")
+async def delete_personal_review(appid: str, dry_run: bool = False):
+    return await operator_call("delete_review", appid, dry_run=dry_run)
+
+
+class ArticleWriteRequest(BaseModel):
+    title: str = Field(..., min_length=1)
+    text: str = ""
+    tag: int = 11
+    draft: bool = True
+    dry_run: bool = False
+    images: List[str] = Field(default_factory=list)
+    communities: List[str] = Field(default_factory=list)
+    hashtags: List[str] = Field(default_factory=list)
+    post_kind: str = "article"
+
+
+class VideoWriteRequest(BaseModel):
+    title: str = Field(..., min_length=1)
+    path: str
+    text: str = ""
+    cover: Optional[str] = None
+    draft: bool = False
+    dry_run: bool = True
+    communities: List[str] = Field(default_factory=list)
+    hashtags: List[str] = Field(default_factory=list)
+
+
+class MediaUploadRequest(BaseModel):
+    path: str
+    kind: str = "image"
+    dry_run: bool = False
+
+
+class CommentWriteRequest(BaseModel):
+    text: str = ""
+    reply_id: str = "-1"
+    root_id: str = "-1"
+    dry_run: bool = False
+    target_text: Optional[str] = None
+    images: List[str] = Field(default_factory=list)
+
+
+@app.get("/api/search")
+async def community_search(keyword: str, kind: str = "post", offset: int = 0, limit: int = 20):
+    if kind not in ("post", "game", "topic", "user") or offset < 0 or not 1 <= limit <= 100:
+        raise HTTPException(status_code=400, detail="搜索参数无效。")
+    return await operator_call("search", keyword, kind=kind, offset=offset, limit=limit)
+
+
+@app.get("/api/posts")
+async def own_posts(offset: int = 0, limit: int = 20):
+    if offset < 0 or not 1 <= limit <= 100:
+        raise HTTPException(status_code=400, detail="分页参数无效。")
+    return await operator_call("posts", offset=offset, limit=limit)
+
+
+@app.post("/api/posts")
+async def create_article(body: ArticleWriteRequest):
+    if not body.text.strip() and not body.images:
+        raise HTTPException(status_code=400, detail="正文或图片不能为空。")
+    return await operator_call(
+        "write_post",
+        body.title,
+        body.text,
+        tag=body.tag,
+        draft=body.draft,
+        dry_run=body.dry_run,
+        images=body.images,
+        communities=body.communities,
+        hashtags=body.hashtags,
+        post_kind=body.post_kind,
+    )
+
+
+@app.patch("/api/posts/{post_id}")
+async def edit_article(post_id: str, body: ArticleWriteRequest):
+    return await operator_call(
+        "write_post",
+        body.title,
+        body.text,
+        tag=body.tag,
+        draft=body.draft,
+        postid=post_id,
+        dry_run=body.dry_run,
+        images=body.images,
+        communities=body.communities,
+        hashtags=body.hashtags,
+        post_kind=body.post_kind,
+    )
+
+
+@app.delete("/api/posts/{post_id}")
+async def delete_article(post_id: str, dry_run: bool = False, draft: bool = False):
+    return await operator_call("delete_post", post_id, dry_run=dry_run, draft=draft)
+
+
+@app.post("/api/posts/{post_id}/comments")
+async def create_community_comment(post_id: str, body: CommentWriteRequest):
+    if not body.text.strip() and not body.images:
+        raise HTTPException(status_code=400, detail="评论正文或图片不能为空。")
+    if body.target_text is not None and (body.reply_id != "-1" or body.root_id != "-1"):
+        raise HTTPException(status_code=400, detail="按正文定位和显式评论 ID 不能同时使用。")
+    if (body.reply_id == "-1") != (body.root_id == "-1"):
+        raise HTTPException(status_code=400, detail="回复需要同时提供 reply_id 和 root_id。")
+    return await operator_call(
+        "comment",
+        post_id,
+        body.text,
+        reply_id=body.reply_id,
+        root_id=body.root_id,
+        dry_run=body.dry_run,
+        target_text=body.target_text,
+        images=body.images,
+    )
+
+
+@app.get("/api/feed")
+async def home_feed(offset: int = 0, limit: int = 20):
+    if offset < 0 or not 1 <= limit <= 100:
+        raise HTTPException(status_code=400, detail="分页参数无效。")
+    return await operator_call("feed", offset=offset, limit=limit)
+
+
+@app.get("/api/profile")
+async def own_profile(limit: int = 10):
+    if not 1 <= limit <= 100:
+        raise HTTPException(status_code=400, detail="分页参数无效。")
+    return await operator_call("profile", limit=limit)
+
+
+@app.post("/api/media/upload")
+async def upload_media(body: MediaUploadRequest):
+    return await operator_call("upload_media", body.path, kind=body.kind, dry_run=body.dry_run)
+
+
+@app.post("/api/videos")
+async def create_video(body: VideoWriteRequest):
+    return await operator_call(
+        "write_video",
+        body.title,
+        body.path,
+        content=body.text,
+        cover=body.cover,
+        draft=body.draft,
+        dry_run=body.dry_run,
+        communities=body.communities,
+        hashtags=body.hashtags,
+    )
+
+
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "8010"))
 
@@ -396,4 +617,4 @@ if __name__ == "__main__":
     logger.info(f"  - 获取帖子: http://localhost:{port}/api/post/179245676")
     logger.info(f"  - 刷新Cookie: curl -X POST http://localhost:{port}/api/cookies/refresh")
 
-    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+    uvicorn.run(app, host=os.getenv("HOST", "127.0.0.1"), port=port, log_level="info")

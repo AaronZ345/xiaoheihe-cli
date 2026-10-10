@@ -1,7 +1,7 @@
 """
 小黑盒 CLI v2.5 — 多子命令架构，支持密码登录
 用法:
-    xiaoheihe login --phone 13800138000 --password "你的密码"  # 密码登录（推荐）
+    xiaoheihe login --browser chromium                    # 官方网页登录
     xiaoheihe login --phone 13800138000                    # 验证码登录
     xiaoheihe get 179245676              # 获取帖子
     xiaoheihe get 179245676 --full       # 完整帖子（含所有评论）
@@ -12,6 +12,7 @@
     xiaoheihe list                       # 查看我的文章列表
     xiaoheihe pub "标题" -c "<p>内容</p>" # 发布文章
 """
+
 from __future__ import annotations
 
 import argparse
@@ -21,7 +22,7 @@ import json
 import logging
 import os
 import sys
-from typing import Optional, Any
+from typing import Any, Optional
 
 # Windows 终端强制 UTF-8，避免 GBK 编码报错
 if sys.platform == "win32":
@@ -31,9 +32,9 @@ if sys.platform == "win32":
 # 确保项目根目录在 path 中
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from utils import extract_link_id, format_number, truncate_text, get_daemon_pid_path
-from xiaoheihe import XiaoheiheClient, DaemonServer
-from config import get_cookie, save_cookie, has_stored_cookie
+from config import get_cookie
+from utils import extract_link_id, format_number, get_daemon_pid_path, truncate_text
+from xiaoheihe import DaemonServer, XiaoheiheClient
 
 logging.basicConfig(
     level=logging.INFO,
@@ -74,7 +75,9 @@ def _default_headless() -> bool:
     if forced is not None:
         return forced
     if sys.platform.startswith("linux"):
-        return not any(os.environ.get(name) for name in ("DISPLAY", "WAYLAND_DISPLAY", "MIR_SOCKET"))
+        return not any(
+            os.environ.get(name) for name in ("DISPLAY", "WAYLAND_DISPLAY", "MIR_SOCKET")
+        )
     return False
 
 
@@ -118,6 +121,7 @@ def _format_time_abs(create_at: Optional[int]) -> str:
         return ""
     try:
         import time as _time
+
         return _time.strftime("%Y-%m-%d %H:%M", _time.localtime(create_at))
     except (ValueError, OSError):
         return ""
@@ -327,11 +331,7 @@ class OutputFormatter:
                     favour = t.favour
                     award = t.award
                 date_str = _format_time_abs(ts)[:10] if ts else "?"
-                print(
-                    f"  {date_str:<12} {click:>6} "
-                    f"{comment:>5} {share:>5} "
-                    f"{favour:>5} {award:>5}"
-                )
+                print(f"  {date_str:<12} {click:>6} {comment:>5} {share:>5} {favour:>5} {award:>5}")
 
         print(color("═" * min(w, 70), CYAN))
         print()
@@ -399,8 +399,15 @@ class OutputFormatter:
     @staticmethod
     def csv_output(results: list, out_file: Optional[str] = None):
         fieldnames = [
-            "post_id", "title", "author_name", "views", "likes",
-            "favorites", "comments", "time", "url",
+            "post_id",
+            "title",
+            "author_name",
+            "views",
+            "likes",
+            "favorites",
+            "comments",
+            "time",
+            "url",
         ]
 
         rows = []
@@ -410,17 +417,19 @@ class OutputFormatter:
             else:
                 a = r.get("author", {})
                 s = r.get("stats", {})
-                rows.append({
-                    "post_id": r.get("post_id", ""),
-                    "title": r.get("title", ""),
-                    "author_name": a.get("name", ""),
-                    "views": s.get("views", 0),
-                    "likes": s.get("likes", 0),
-                    "favorites": s.get("favorites", 0),
-                    "comments": s.get("comments", 0),
-                    "time": r.get("time", ""),
-                    "url": r.get("url", ""),
-                })
+                rows.append(
+                    {
+                        "post_id": r.get("post_id", ""),
+                        "title": r.get("title", ""),
+                        "author_name": a.get("name", ""),
+                        "views": s.get("views", 0),
+                        "likes": s.get("likes", 0),
+                        "favorites": s.get("favorites", 0),
+                        "comments": s.get("comments", 0),
+                        "time": r.get("time", ""),
+                        "url": r.get("url", ""),
+                    }
+                )
 
         if out_file:
             with open(out_file, "w", encoding="utf-8-sig", newline="") as f:
@@ -450,7 +459,7 @@ class _ClientCtx:
     """
     统一客户端上下文管理器 —— 自动处理 Cookie 加载 + 生命周期。
 
-    Cookie 优先级: --cookie 参数 > XHH_COOKIE 环境变量 > ~/.xhh_cookie 文件
+    Cookie 优先级: 显式配置 > XHH_COOKIE 环境变量 > 本工具的私有会话文件
     用法: async with _ClientCtx(args) as c: ...
     """
 
@@ -530,7 +539,9 @@ async def cmd_creator(args):
 async def cmd_list(args):
     async with _ClientCtx(args) as c:
         data = await c.get_my_articles()
-        _output(data, getattr(args, "format", "table"), getattr(args, "output", None), "article_list")
+        _output(
+            data, getattr(args, "format", "table"), getattr(args, "output", None), "article_list"
+        )
 
 
 async def cmd_publish(args):
@@ -541,6 +552,7 @@ async def cmd_publish(args):
 
     if getattr(args, "markdown", None):
         from markdown_converter import HeyBoxConverter
+
         converter = HeyBoxConverter()
         html_content = converter.convert(args.markdown, source_format="markdown")
         convert_stats = converter.stats.summary()
@@ -548,6 +560,7 @@ async def cmd_publish(args):
 
     elif args.content:
         from markdown_converter import HeyBoxConverter
+
         converter = HeyBoxConverter()
         html_content = converter.convert(args.content, source_format="auto")
         convert_stats = converter.stats.summary()
@@ -562,6 +575,7 @@ async def cmd_publish(args):
             logger.error("HTML 文件不存在: %s", args.html)
             sys.exit(1)
         from markdown_converter import HeyBoxConverter
+
         converter = HeyBoxConverter()
         html_content = converter.convert(raw_html, source_format="html")
         convert_stats = converter.stats.summary()
@@ -579,17 +593,21 @@ async def cmd_publish(args):
             draft=not args.do_publish,
         )
 
+    if args.format == "json":
+        OutputFormatter.json(result, args.output)
+        return
+
     # 输出结果
     action = "草稿" if not args.do_publish else "正式发布"
     w = os.get_terminal_size().columns if sys.stdout.isatty() else 80
 
     print()
-    print(color(f"  {'='*min(w, 50)}", CYAN))
+    print(color(f"  {'=' * min(w, 50)}", CYAN))
     status_icon = GREEN + "[OK]" + RESET if result.get("success") else YELLOW + "[FAIL]" + RESET
     print(f"  {status_icon} {action}: {result.get('title', args.title)}")
     if convert_stats and convert_stats != "无需转换":
         print(color(f"  格式转换: {convert_stats}", DIM))
-    print(color(f"  {'─'*min(w, 50)}", DIM))
+    print(color(f"  {'─' * min(w, 50)}", DIM))
 
     if result.get("success"):
         print(f"  link_id: {result.get('link_id')}")
@@ -597,7 +615,7 @@ async def cmd_publish(args):
     else:
         print(f"  错误:     {result.get('message', '未知错误')}")
 
-    print(color(f"  {'='*min(w, 50)}", CYAN))
+    print(color(f"  {'=' * min(w, 50)}", CYAN))
     print()
 
     # JSON 模式额外输出完整数据
@@ -640,7 +658,12 @@ async def cmd_login(args):
 
         print(f"\n{color('  ✅ Cookie 已导入并保存。', GREEN)}")
         if not args.skip_verify and not verify_ok:
-            print(color("   ⚠ 在线校验未通过，但已保留 Cookie。建议继续执行 list/pub 做一次实测。", YELLOW))
+            print(
+                color(
+                    "   ⚠ 在线校验未通过，但已保留 Cookie。建议继续执行 list/pub 做一次实测。",
+                    YELLOW,
+                )
+            )
         print("   后续可直接在纯命令行 Linux 环境执行:")
         print("   python cli.py list")
         print("   python cli.py pub '标题' -c '<p>内容</p>'\n")
@@ -671,9 +694,9 @@ async def cmd_login(args):
 
     if success:
         print(f"\n{color('  ✅ 登录完成！Cookie 已保存。', GREEN)}")
-        print(f"   后续所有命令可直接使用:")
-        print(f"   python cli.py get <id>")
-        print(f"   python cli.py pub '标题' -c '<p>内容</p>'\n")
+        print("   后续所有命令可直接使用:")
+        print("   python cli.py get <id>")
+        print("   python cli.py pub '标题' -c '<p>内容</p>'\n")
 
         # 输出 JSON 结果
         result = {
@@ -681,7 +704,7 @@ async def cmd_login(args):
             "message": "登录成功",
             "heybox_id": bm.heybox_id,
             "headless": args.headless,
-            "phone": phone[:len(phone) - 4] + "****",
+            "phone": phone[: len(phone) - 4] + "****",
         }
         if args.format == "json":
             OutputFormatter.json(result, args.output)
@@ -692,7 +715,7 @@ async def cmd_login(args):
         result = {
             "status": "error",
             "message": "登录失败",
-            "phone": phone[:len(phone) - 4] + "****",
+            "phone": phone[: len(phone) - 4] + "****",
         }
         if args.format == "json":
             OutputFormatter.json(result, args.output)
@@ -722,8 +745,8 @@ async def cmd_serve(args):
         await server.start()
     except KeyboardInterrupt:
         print("\n正在停止守护进程...")
-        await server.stop()
     finally:
+        await server.stop()
         if os.path.exists(pid_path):
             os.remove(pid_path)
 
@@ -751,7 +774,7 @@ def cmd_status(args):
         print(f"     清理: del {pid_path}")
     else:
         print(color("  ● 守护进程未运行", YELLOW))
-        print(f"     启动: xiaoheihe serve")
+        print("     启动: xiaoheihe serve")
 
 
 # ==================== 工具函数 ====================
@@ -760,6 +783,7 @@ def cmd_status(args):
 def _daemon_health(timeout: float = 2.0) -> Optional[dict]:
     try:
         import socket as _sock
+
         sock = _sock.socket(_sock.AF_INET, _sock.SOCK_STREAM)
         sock.settimeout(timeout)
         sock.connect(("127.0.0.1", 19810))
@@ -843,9 +867,9 @@ def main():
         prog="xiaoheihe",
         description=color(f"小黑盒 CLI {_VERSION} — 社区数据 & 发布工具 (Agent友好)", BOLD),
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=f"""\
+        epilog="""\
 示例:
-  %(prog)s login --phone 13800138000 --password "xxx"   密码登录（推荐）
+  %(prog)s login --browser chromium              官方网页登录
   %(prog)s login --phone 13800138000                  验证码登录
   %(prog)s get 179245676                  获取帖子（JSON输出）
   %(prog)s get 179245676 -f table          获取帖子（表格显示）
@@ -863,17 +887,27 @@ def main():
   %(prog)s -f json get 179245676           Agent 友好的 JSON 输出
         """,
     )
-    parser.add_argument("--headless", action="store_true", default=default_headless,
-                        help=f"无头模式（默认: {'开启' if default_headless else '关闭'}）")
-    parser.add_argument("--no-headless", dest="headless", action="store_false",
-                        help="关闭无头模式")
-    parser.add_argument("-f", "--format", choices=["json", "table", "csv"],
-                        default="json", help="输出格式（默认json）")
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        default=default_headless,
+        help=f"无头模式（默认: {'开启' if default_headless else '关闭'}）",
+    )
+    parser.add_argument("--no-headless", dest="headless", action="store_false", help="关闭无头模式")
+    parser.add_argument(
+        "-f",
+        "--format",
+        choices=["json", "table", "csv"],
+        default="json",
+        help="输出格式（默认json）",
+    )
     parser.add_argument("-o", "--output", default=None, help="输出文件路径")
-    parser.add_argument("--cookie", default=None,
-                        help="Cookie 字符串（优先级最高，覆盖环境变量和配置文件）")
-    parser.add_argument("--cookie-file", default=None,
-                        help="从文件读取 Cookie 字符串（适合 Linux 服务器）")
+    parser.add_argument(
+        "--cookie", default=None, help="Cookie 字符串（优先级最高，覆盖环境变量和配置文件）"
+    )
+    parser.add_argument(
+        "--cookie-file", default=None, help="从文件读取 Cookie 字符串（适合 Linux 服务器）"
+    )
 
     subparsers = parser.add_subparsers(dest="command", help="命令")
 
@@ -881,15 +915,21 @@ def main():
     p_get = subparsers.add_parser("get", aliases=["g"], help="获取帖子详情")
     p_get.add_argument("post_id", help="帖子ID或URL")
     p_get.add_argument("--full", action="store_true", help="包含全部评论")
-    p_get.add_argument("-f", "--format", choices=["json", "table", "csv"],
-                        default="json", help="输出格式（默认json）")
+    p_get.add_argument(
+        "-f",
+        "--format",
+        choices=["json", "table", "csv"],
+        default="json",
+        help="输出格式（默认json）",
+    )
 
     # --- comments ---
     p_com = subparsers.add_parser("comments", aliases=["c"], help="获取评论")
     p_com.add_argument("post_id", help="帖子ID或URL")
     p_com.add_argument("-p", "--page", type=int, default=1, help="页码（默认1）")
-    p_com.add_argument("-s", "--page-size", type=int, default=20, dest="page_size",
-                       help="每页数量（默认20）")
+    p_com.add_argument(
+        "-s", "--page-size", type=int, default=20, dest="page_size", help="每页数量（默认20）"
+    )
 
     # --- batch ---
     p_bat = subparsers.add_parser("batch", aliases=["b"], help="批量爬取")
@@ -900,8 +940,9 @@ def main():
     # --- serve ---
     p_srv = subparsers.add_parser("serve", aliases=["s"], help="启动守护进程")
     p_srv.add_argument("--port", type=int, default=19810, help="监听端口（默认19810）")
-    p_srv.add_argument("--headless", action="store_true", default=True,
-                       help="无头模式（serve 默认开启）")
+    p_srv.add_argument(
+        "--headless", action="store_true", default=True, help="无头模式（serve 默认开启）"
+    )
 
     # --- status ---
     subparsers.add_parser("status", aliases=["st"], help="查看守护进程状态")
@@ -909,47 +950,67 @@ def main():
     # --- creator ---
     p_cre = subparsers.add_parser("creator", aliases=["cr"], help="创作者后台数据")
     p_cre.add_argument("post_id", help="帖子ID或URL")
-    p_cre.add_argument("-f", "--format", choices=["json", "table", "csv"],
-                        default="table", help="输出格式（默认table）")
+    p_cre.add_argument(
+        "-f",
+        "--format",
+        choices=["json", "table", "csv"],
+        default="table",
+        help="输出格式（默认table）",
+    )
     p_cre.add_argument("-o", "--output", default=None, help="输出文件路径")
 
     # --- list ---
     p_list = subparsers.add_parser("list", aliases=["ls"], help="查看已发布文章列表")
-    p_list.add_argument("-f", "--format", choices=["json", "table", "csv"],
-                        default="table", help="输出格式（默认table）")
+    p_list.add_argument(
+        "-f",
+        "--format",
+        choices=["json", "table", "csv"],
+        default="table",
+        help="输出格式（默认table）",
+    )
     p_list.add_argument("-o", "--output", default=None, help="输出文件路径")
-
 
     # --- login ---
     p_login = subparsers.add_parser("login", aliases=["li"], help="手机号登录（密码或验证码）")
-    p_login.add_argument("--headless", action="store_true", default=default_headless,
-                         help=f"无头模式（默认: {'开启' if default_headless else '关闭'}）")
-    p_login.add_argument("--no-headless", dest="headless", action="store_false",
-                         help="关闭无头模式")
-    p_login.add_argument("-f", "--format", choices=["json", "table", "csv"],
-                         default="json", help="输出格式（默认json）")
+    p_login.add_argument(
+        "--headless",
+        action="store_true",
+        default=default_headless,
+        help=f"无头模式（默认: {'开启' if default_headless else '关闭'}）",
+    )
+    p_login.add_argument(
+        "--no-headless", dest="headless", action="store_false", help="关闭无头模式"
+    )
+    p_login.add_argument(
+        "-f",
+        "--format",
+        choices=["json", "table", "csv"],
+        default="json",
+        help="输出格式（默认json）",
+    )
     p_login.add_argument("-o", "--output", default=None, help="输出文件路径")
-    p_login.add_argument("--phone", required=False,
-                         help="手机号，如 13800138000")
-    p_login.add_argument("--password", default=None,
-                         help="登录密码（提供则使用密码模式，不提供则用验证码模式）")
-    p_login.add_argument("--cookie-string", default=None,
-                         help="直接导入 Cookie 字符串并保存")
-    p_login.add_argument("--cookie-file", default=None,
-                         help="从文件导入 Cookie 字符串并保存")
-    p_login.add_argument("--skip-verify", action="store_true",
-                         help="导入 Cookie 时跳过在线校验")
+    p_login.add_argument("--phone", required=False, help="手机号，如 13800138000")
+    p_login.add_argument(
+        "--password", default=None, help="登录密码（提供则使用密码模式，不提供则用验证码模式）"
+    )
+    p_login.add_argument("--cookie-string", default=None, help="直接导入 Cookie 字符串并保存")
+    p_login.add_argument("--cookie-file", default=None, help="从文件导入 Cookie 字符串并保存")
+    p_login.add_argument("--skip-verify", action="store_true", help="导入 Cookie 时跳过在线校验")
 
     # --- publish ---
     p_pub = subparsers.add_parser("publish", aliases=["pub"], help="发布/保存草稿")
     p_pub.add_argument("title", help="文章标题（用引号包裹）")
     p_pub.add_argument("--html", help="HTML 正文文件路径")
     p_pub.add_argument("-c", "--content", default=None, help="HTML 正文内容（直接传入）")
-    p_pub.add_argument("-m", "--markdown", default=None, help="Markdown 正文（自动转换为小黑盒兼容格式）")
-    p_pub.add_argument("--tag", type=int, default=11, dest="link_tag",
-                       help="标签ID（默认11=校园生活）")
-    p_pub.add_argument("--publish", action="store_true", dest="do_publish",
-                       help="正式发布（默认只存草稿箱）")
+    p_pub.add_argument(
+        "-m", "--markdown", default=None, help="Markdown 正文（自动转换为小黑盒兼容格式）"
+    )
+    p_pub.add_argument(
+        "--tag", type=int, default=11, dest="link_tag", help="标签ID（默认11=校园生活）"
+    )
+    p_pub.add_argument(
+        "--publish", action="store_true", dest="do_publish", help="正式发布（默认只存草稿箱）"
+    )
 
     args = parser.parse_args()
 
@@ -978,4 +1039,6 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    from xhh_operator.cli import main as operator_main
+
+    operator_main()

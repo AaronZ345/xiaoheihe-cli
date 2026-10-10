@@ -1,10 +1,2 @@
-httpx>=0.25.0
-pydantic>=2.5.2
-playwright>=1.40.0
-fastapi>=0.109.0
-uvicorn[standard]>=0.25.0
-pygments>=2.17.0
-Pillow>=10.0.0
-requests>=2.32.0
-markdown>=3.7
-
+# Keep pip installation aligned with pyproject.toml.
+.

@@ -7,13 +7,13 @@
 
 保留此文件仅为向后兼容，新功能请使用 cli.py。
 """
+
 import argparse
 import asyncio
 import json
 import logging
 import os
 import sys
-from typing import Optional
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,8 +46,8 @@ async def _legacy_main():
     # 转发到新 CLI 的内部实现
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-    from browser_manager import BrowserManager
     from api_client import XiaoheiheAPIClient
+    from browser_manager import BrowserManager
     from data_parser import DataParser
     from utils import extract_link_id
 
@@ -71,8 +71,11 @@ async def _legacy_main():
         for i, lid in enumerate(link_ids):
             if i > 0:
                 await asyncio.sleep(2.0)
-            result = await (api_client.get_post_full(lid) if args.full
-                           else api_client.get_post_comments(lid, page_num=1, limit=20))
+            result = await (
+                api_client.get_post_full(lid)
+                if args.full
+                else api_client.get_post_comments(lid, page_num=1, limit=20)
+            )
             if not result:
                 results.append({"error": "帖子不存在或Cookie已过期", "post_id": lid})
                 continue

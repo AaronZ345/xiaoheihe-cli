@@ -40,6 +40,14 @@ _http_*
 Thumbs.db
 *.log
 
+# Local development and private login artifacts
+tmp/
+output/
+.playwright-cli/
+.pytest_cache/
+.ruff_cache/
+.coverage
+
 # WorkBuddy workspace config
 .workbuddy/
 
@@ -47,3 +55,12 @@ Thumbs.db
 _creator_report*
 
 
+# Private container session
+session/
+
+# Runtime exports and local authentication material
+*.csv
+*.json
+.env.*
+profile/
+profiles/

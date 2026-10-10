@@ -1,455 +1,123 @@
-# 小黑盒爬虫 API
+<div align="center">
 
-专业的小黑盒社区帖子爬虫，支持 **CLI 命令行调用**、**守护模式（浏览器常驻）**、**Python SDK** 和 **RESTful API** 四种使用方式。
+# xiaoheihe-cli
 
-## ✨ 特性
+**在终端查询游戏记录和个人短评，管理小黑盒社区内容。**
 
-- 🚀 **CLI 一行调用**: `xiaoheihe get 179245676` 即刻获取帖子
-- ⚡ **守护模式**: 浏览器常驻，后续请求秒回，无需重复启动
-- 📦 **Python SDK**: `async with XiaoheiheClient() as c:` 直接 import 使用
-- 🔌 **RESTful API**: FastAPI 提供标准 HTTP 接口
-- 📊 **多格式输出**: JSON / 简洁表格 / CSV
-- 完整数据提取：帖子、评论、嵌套评论、图片、视频、表情、勋章
-- Cookie 持久化：首次登录后自动复用
-- Docker 部署支持
+支持 CLI、Python SDK、REST API、MCP 和 Agent Skill。
 
-## 快速开始
+[![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB)](https://www.python.org/)
+[![MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 
-### 1. 安装依赖
+[安装](#安装) · [常用命令](#常用命令) · [助手接入](#助手接入) · [浏览器](docs/browser-login.md) · [开发](CONTRIBUTING.md)
 
-```bash
-pip install -r requirements.txt
-playwright install chromium
-```
+</div>
 
-### 2. CLI 用法（推荐）
+## 能做什么
 
-```bash
-# 获取帖子（简洁表格显示）
-python cli.py get 179245676
+| 功能 | 内容 |
+|---|---|
+| 个人游戏与评测 | 游戏记录、按名称查询、本人评分与完整短评；创建、修改、删除个人评测 |
+| 社区查询 | 帖子、游戏、话题、用户搜索；首页、本人主页、帖子、评论与楼中楼 |
+| 内容发布 | 图文和文章、本地图片、Markdown 内嵌图片；最多 2 个社区、5 个话题 |
+| 视频 | 本地视频上传、自动或指定封面、正式发布；视频默认仅预览 |
+| 评论与回复 | 文字和图片评论；按 ID 或完整正文定位目标，重复正文不自动选择 |
+| 批量与导出 | 评论分页、批量帖子、创作者数据、JSON／表格／CSV、文件输出 |
+| 助手接入 | 18 个 MCP 工具、Agent Skill、本地诊断与 REST 服务 |
 
-# 获取完整帖子（含所有评论）
-python cli.py get 179245676 --full
+## 安装
 
-# 只看评论
-python cli.py comments 179245676
-
-# 批量爬取
-python cli.py batch ids.txt
-
-# 输出格式选择
-python cli.py get 179245676 -f json        # 完整JSON
-python cli.py get 179245676 -f table       # 简洁表格（默认）
-python cli.py batch ids.txt -f csv         # 导出CSV
-python cli.py get 179245676 -o post.json   # 保存到文件
-```
-
-### 3. 守护模式（浏览器常驻）
+需要 **Python 3.11 或更新版本**。下载发行包后安装：
 
 ```bash
-# 终端1：启动守护进程（浏览器只启动一次）
-python cli.py serve
-
-# 终端2：随时调用（秒响应）
-python cli.py get 179245676              # 自动连接守护进程
-python cli.py get 977e70c3b33f --full    # 秒回
-python cli.py batch ids.txt              # 批量也走守护进程
-
-# 查看状态
-python cli.py status
+uv tool install ./xiaoheihe_cli-0.1.0-py3-none-any.whl
+xiaoheihe-cli --version
+xiaoheihe-cli doctor
 ```
 
-### 4. Python SDK 调用
-
-```python
-import asyncio
-from xiaoheihe import XiaoheiheClient
-
-async def main():
-    # 直连模式（自动管理浏览器生命周期）
-    async with XiaoheiheClient(headless=True) as client:
-        post = await client.get_post("179245676")
-        print(f"标题: {post['title']}")
-        print(f"作者: {post['author']['name']}")
-
-        # 获取评论
-        comments = await client.get_comments("179245676", page=1, page_size=10)
-        for c in comments["comments"]:
-            print(f"{c['author']['name']}: {c['content']}")
-
-        # 批量
-        results = await client.batch_get(["179245676", "179290771"])
-
-    # 守护模式调用
-    client = XiaoheiheClient(daemon=True)
-    post = await client.get_post("179245676")
-    await client.close()
-
-asyncio.run(main())
-```
-
-### 4.1 服务器侧发布文章的重要说明
-
-`XiaoheiheClient.publish()` 接收的是“最终 HTML”，不会自动把 Markdown 转成小黑盒兼容格式。
-
-如果你在服务器代码里直接这样写：
-
-```python
-await client.publish(title="标题", html_content=markdown_text, draft=True)
-```
-
-那小黑盒拿到的其实是“被当成 HTML 的 Markdown 原文”，格式很容易错乱。
-
-服务器侧推荐改用：
-
-```python
-async with XiaoheiheClient(headless=True) as client:
-    result = await client.publish_markdown(
-        title="服务器文章",
-        markdown_content=markdown_text,
-        draft=True,
-    )
-```
-
-或者：
-
-```python
-async with XiaoheiheClient(headless=True) as client:
-    result = await client.publish_content(
-        title="服务器文章",
-        content=raw_content,
-        source_format="auto",
-        draft=True,
-    )
-```
-
-两者都会先调用 `HeyBoxConverter`，再发布到小黑盒。
-
-另外，服务器上请确认以下依赖已经安装完整，否则代码块/表格会退化：
+从源码使用：
 
 ```bash
-python - <<'PY'
-import markdown
-import PIL
-import pygments
-print("deps ok")
-PY
+uv sync
+uv run xiaoheihe-cli --help
+uv run xiaoheihe-cli doctor
 ```
 
-### 5. RESTful API 服务
+`xiaoheihe` 是兼容命令别名。网页登录可使用已安装的 Chrome 或 Edge；需要配套引擎时，在工具环境运行 `playwright install chromium`。源码环境可执行 `uv run playwright install chromium firefox webkit`。这些操作不读取日常浏览器的个人资料。
+
+## 常用命令
+
+### 查询记录与社区
 
 ```bash
-python api_server.py
+xiaoheihe-cli login
+xiaoheihe-cli login --browser chrome
+xiaoheihe-cli auth status
+xiaoheihe-cli games --limit 10
+xiaoheihe-cli games --query "游戏名称"
+xiaoheihe-cli review list --limit 2
+xiaoheihe-cli review list --summary --limit 20
+xiaoheihe-cli review get 570
+xiaoheihe-cli search "游戏名称" --type post
+xiaoheihe-cli feed --limit 10
+xiaoheihe-cli post get POST_ID
+xiaoheihe-cli comment list POST_ID --sort latest
 ```
 
-服务地址：
-- API文档: http://localhost:8010/docs
-- 健康检查: http://localhost:8010/health
+个人评分是小黑盒本人的 **1–5 星整数**，`personal_score` 不使用社区汇总评分。完整短评从本人评测正文读取；连续读取遇到验证码时停止该项请求。
 
-## Docker 部署
-
-### 首次登录（必须先做）
-
-首次使用需要人工登录通过验证码，此步骤必须在 Docker 之外完成：
+### 编辑与发布
 
 ```bash
-# 本地安装并启动
-pip install -r requirements.txt
-playwright install chromium
-python api_server.py
-# 浏览器窗口会自动打开，完成验证码登录
-# cookies.json 会自动保存，然后 Ctrl+C 停止
+xiaoheihe-cli review edit 570 --score 4 --dry-run
+xiaoheihe-cli post create --kind image_text --title "标题" --text "正文" --image /path/to/photo.png --dry-run
+xiaoheihe-cli post create --kind article --title "标题" --file article.md --community "准确社区名称" --hashtag "准确话题名称" --dry-run
+xiaoheihe-cli video create /path/to/video.mp4 --title "标题" --cover /path/to/cover.png
+xiaoheihe-cli comment create POST_ID --text "评论" --image /path/to/photo.png --dry-run
+xiaoheihe-cli comment reply POST_ID --target-text "目标评论完整正文" --text "回复" --dry-run
 ```
 
-### Docker 启动
+文章和图文移除 `--dry-run` 后保存草稿，正式发布再加 `--publish`。平台不支持视频草稿；视频未加 `--publish` 时只预览，明确发布才上传和提交。未提供的个人评分或正文会保留；帖子编辑和删除先核实作者。
+
+## 助手接入
+
+启用 MCP：
 
 ```bash
-# 确认 cookies.json 已存在
-docker compose up -d --build
-
-# 查看状态
-curl http://localhost:8010/health
-
-# 查看日志
-docker compose logs -f
+uv sync --extra mcp
+uv run xiaoheihe-cli mcp
+uv run xiaoheihe-cli mcp --transport streamable-http --port 8001
 ```
 
-### 环境变量
+MCP 写工具默认 `dry_run=true`。实际提交需显式设置 `dry_run=false`；图文和文章的公开发布还需设置 `draft=false`。工具清单、参数和客户端配置见 [MCP](docs/MCP.md)。
 
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `HEADLESS` | `true` | 浏览器无头模式，Docker 环境必须为 `true` |
-| `PORT` | `8010` | 服务器监听端口 |
-
-### 数据持久化
-
-- `cookies.json` — 登录凭证，绑定挂载到宿主机，重启后复用
-- `data/` — 图片下载目录（当前默认不下载图片）
-
-### 刷新 Cookie
+Agent Skill 随 wheel 和源码包提供：
 
 ```bash
-# 方式1：本地重新登录，替换 cookies.json
-# 方式2：停止容器后本地登录
-docker compose down
-python api_server.py  # 本地完成验证码
-docker compose up -d
+xiaoheihe-cli skill install
 ```
 
-## API端点
+安装到当前 Codex home 的技能目录；已有其他来源或符号链接时拒绝覆盖。技能内容位于 [skills/xiaoheihe-cli/SKILL.md](skills/xiaoheihe-cli/SKILL.md)。
 
-### 1. 获取帖子（不含评论）
+## 结果与诊断
 
-```bash
-GET /api/post/{post_id}
-```
+`accepted` 表示平台接收，`verified` 表示读回核验。结果未知时不自动重复上传、发布或评论。未知数值保持 `null`；分页异常、限流、认证与验证码有明确错误，不能把失败当作空结果或完整读取。
 
-**示例**：
-```bash
-curl "http://localhost:8010/api/post/977e70c3b33f"
-```
+`doctor` 默认只检查运行时和会话文件元信息；显式 `doctor --verify-login` 才核验账号。会话使用独立的本机应用目录；macOS/Linux 下目录和文件权限分别为 `0700/0600`。账号凭据、个人记录、浏览器资料和媒体文件不进入仓库或发行包。
 
-### 2. 获取评论（分页）
+## 文档
 
-```bash
-GET /api/post/{post_id}/comments?page=1&page_size=20
-```
+| 文档 | 用途 |
+|---|---|
+| [命令参考](docs/cli.md) | 查询、编辑、媒体、兼容命令和输出格式 |
+| [浏览器登录](docs/browser-login.md) | 引擎、安装、独立登录窗口和自定义路径 |
+| [MCP](docs/MCP.md) | 18 个工具与 stdio／Streamable HTTP 配置 |
+| [SDK、REST 与 Docker](docs/integrations.md) | 接口调用和本地部署 |
+| [接口契约](docs/api-contract.md) | 平台字段、分页、上传和签名 |
+| [兼容性](docs/COMPATIBILITY.md) | 浏览器及系统测试范围 |
+| [验证记录](docs/validation.md) | 已完成的实测与边界 |
+| [开发指南](CONTRIBUTING.md) | 统一验收、构建和发布 |
 
-### 3. 获取完整帖子（含所有评论）
+## 许可证
 
-```bash
-GET /api/post/{post_id}/full
-```
-
-### 4. 批量爬取
-
-```bash
-POST /api/posts/batch
-Content-Type: application/json
-
-{
-  "urls": ["https://www.xiaoheihe.cn/app/bbs/link/xxxxx"],
-  "download_images": false
-}
-```
-
-## 数据结构
-
-### 帖子数据
-
-```json
-{
-  "post_id": "977e70c3b33f",
-  "title": "帖子标题",
-  "content": "帖子内容",
-  "author": {
-    "name": "用户名",
-    "level": "Lv.9",
-    "user_id": "12345678",
-    "avatar_url": "https://...",
-    "medals": [...],
-    "wearing_medal": {...}
-  },
-  "tags": ["标签1", "标签2"],
-  "images": [...],
-  "video": {
-    "url": "https://videoheybox.max-c.com/...",
-    "poster": "https://imgheybox.max-c.com/...",
-    "width": 1728,
-    "height": 1080,
-    "duration": 101.216
-  },
-  "stats": {
-    "views": 484786,
-    "likes": 808,
-    "favorites": 114,
-    "comments": 1437
-  },
-  "comments": [...]
-}
-```
-
-### 评论数据
-
-```json
-{
-  "comment_id": "721454406",
-  "author": {
-    "user_id": "83709585",
-    "name": "用户名",
-    "level": "Lv.13",
-    "avatar_url": "https://...",
-    "medals": [...],
-    "wearing_medal": {...}
-  },
-  "content": "评论内容",
-  "emojis": [
-    {
-      "name": "cube_笑cry",
-      "emoji_id": "32",
-      "sprite_url": "https://static.max-c.com/heybox_web/emoji/cube/cube_emoji_v19.png",
-      "background_position": "70px 154px"
-    }
-  ],
-  "time": "1小时前",
-  "location": "四川",
-  "likes": 0,
-  "floor_num": 11,
-  "images": [
-    {
-      "url": "https://...",
-      "thumb": "https://...",
-      "width": 1920,
-      "height": 1080
-    }
-  ],
-  "reply_to": {...},
-  "child_comments": [...]
-}
-```
-
-### 表情数据说明
-
-表情使用CSS Sprite技术，返回的数据包含：
-- `sprite_url`: 雪碧图完整URL
-- `background_position`: 精确位置（如 "70px 154px"）
-- 前端可直接使用这些数据渲染表情
-
-## Python调用示例
-
-```python
-import requests
-
-response = requests.get("http://localhost:8010/api/post/977e70c3b33f/full")
-data = response.json()
-
-print(f"标题: {data['data']['title']}")
-print(f"作者: {data['data']['author']['name']}")
-
-if data['data'].get('video'):
-    print(f"视频: {data['data']['video']['url']}")
-
-for comment in data['data']['comments']:
-    print(f"{comment['author']['name']}: {comment['content']}")
-    
-    for emoji in comment.get('emojis', []):
-        print(f"  表情: {emoji['name']} @ {emoji['background_position']}")
-```
-
-## 技术架构
-
-- **Playwright**: 无头浏览器，处理客户端渲染
-- **FastAPI**: 高性能异步API框架
-- **Pydantic**: 数据验证和序列化
-- **浏览器持久化**: 复用浏览器实例，提升响应速度
-
-## 项目结构
-
-```
-xiaoheihe/
-├── cli.py                  # CLI 入口（多子命令：get/comments/batch/serve/status）
-├── xiaoheihe/
-│   └── __init__.py         # SDK 核心（XiaoheiheClient + DaemonServer）
-├── api_server.py           # FastAPI HTTP 服务
-├── browser_manager.py      # 浏览器管理 + Cookie 持久化
-├── api_client.py           # API 请求层（Playwright 页面拦截）
-├── data_parser.py          # JSON → Pydantic 模型解析
-├── models.py               # 数据模型定义
-├── utils.py                # 公共工具函数
-├── crawler.py              # 旧版 CLI（保留兼容）
-├── requirements.txt        # 依赖列表
-├── Dockerfile              # Docker 镜像
-├── docker-compose.yml      # Docker Compose 编排
-├── README.md              # 本文件
-└── cookies.json            # 持久化 Cookie（自动生成，不提交）
-```
-
-## 注意事项
-
-1. 服务器不会下载图片到本地（`download_images=False`）
-2. 图片URL直接返回给客户端使用
-3. 表情位置为精确像素值，可直接用于CSS background-position
-4. 视频元数据（宽高、时长）在视频未加载时可能为空
-5. 建议合理控制请求频率
-
-## 免责声明
-
-### 法律声明
-
-本项目（xiaoheihe-crawler-api）仅供学习、研究和技术交流使用。使用本项目时，您必须遵守以下条款：
-
-#### 1. 使用限制
-
-- ✅ **允许**：个人学习、技术研究、非商业用途
-- ❌ **禁止**：商业用途、大规模数据采集、侵犯他人权益
-- ❌ **禁止**：用于任何违反法律法规的行为
-
-#### 2. 数据使用规范
-
-- 爬取的数据仅供个人学习使用
-- 不得传播、出售或用于商业目的
-- 必须尊重原网站的版权和用户隐私
-- 不得对目标网站造成负担或损害
-
-#### 3. 用户责任
-
-使用本项目时，用户应当：
-- 遵守所在地区的相关法律法规
-- 遵守数据保护和隐私相关法律
-- 遵守小黑盒平台的服务条款和robots.txt协议
-- 合理控制请求频率，避免对服务器造成压力
-
-#### 4. 免责条款
-
-- 本项目作者不对使用本工具产生的任何后果负责
-- 因使用本工具导致的任何法律纠纷与作者无关
-- 用户使用本工具的一切行为由用户本人承担全部责任
-- 本工具按"原样"提供，不提供任何明示或暗示的保证
-
-#### 5. 知识产权
-
-- 小黑盒及其数据的所有权归其所有者
-- 本项目代码采用MIT License开源协议
-- 使用本项目不代表获得小黑盒数据的任何权利
-
-#### 6. 合规建议
-
-建议用户：
-- 仅在测试环境使用
-- 设置合理的请求间隔（建议≥3秒）
-- 不要在生产环境大规模部署
-- 定期检查并遵守目标网站的最新条款
-
-### 风险提示
-
-⚠️ **重要提示**：
-- 网络爬虫可能违反网站服务条款
-- 过度爬取可能导致IP被封禁
-- 数据采集需遵守相关法律法规
-- 商业用途需获得平台授权
-
-**使用本项目即表示您已阅读、理解并同意遵守以上所有条款。如不同意，请立即停止使用。**
-
-## License
-
-MIT License
-
-Copyright (c) 2025 Li Fangyu
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+非官方小黑盒工具，采用 [MIT License](LICENSE)。

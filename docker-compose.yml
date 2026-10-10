@@ -5,9 +5,9 @@ services:
       dockerfile: Dockerfile
     container_name: xiaoheihe-crawler-api
     ports:
-      - "8010:8010"
+      - "127.0.0.1:8010:8010"
     volumes:
-      - ./cookies.json:/app/cookies.json:rw
+      - ${XHH_OPERATOR_SESSION_DIR:-session-data}:/app/session:rw
       - ./data:/app/data:rw
     environment:
       - HEADLESS=true
@@ -24,3 +24,6 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
+
+volumes:
+  session-data:

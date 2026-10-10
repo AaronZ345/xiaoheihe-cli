@@ -12,21 +12,21 @@
     client = XiaoheiheClient(daemon=True)
     post = await client.get_post("179245676")  # 自动连接守护进程
 """
+
 from __future__ import annotations
 
 import asyncio
 import json
 import logging
-import os
 import socket as stdlib_socket
-import sys
-from typing import Optional, List, Dict, Any
+from typing import Any, Dict, List, Optional
 
-from browser_manager import BrowserManager
 from api_client import XiaoheiheAPIClient
+from browser_manager import BrowserManager
 from config import get_cookie
 from data_parser import DataParser
-from utils import extract_link_id, get_daemon_pid_path
+from utils import extract_link_id
+from xhh_operator.service import Operator as Operator
 
 logger = logging.getLogger(__name__)
 
@@ -77,8 +77,9 @@ class XiaoheiheClient:
         适合从浏览器复制 Cookie 后快速初始化。
         """
         self._browser_manager = BrowserManager(headless=self.headless)
-        await self._browser_manager.inject_cookies(cookie_string)
-        await self._browser_manager.start_session()
+        await self._browser_manager.inject_cookies(cookie_string, persist=False)
+        if not await self._browser_manager.validate_cookies():
+            raise RuntimeError("认证失败，请执行 xiaoheihe login。")
         self._api_client = XiaoheiheAPIClient(page=self._browser_manager.api_page)
         self._api_client.set_heybox_id(self._browser_manager.heybox_id)
         logger.info("Cookie 注入模式就绪 (heybox_id=%s)", self._browser_manager.heybox_id)
@@ -100,25 +101,17 @@ class XiaoheiheClient:
         return result
 
     async def _connect_direct(self):
-        """直连：初始化浏览器 + 单页会话"""
+        """校验会话并准备 API 上下文；HTTP 查询不依赖首页导航。"""
         self._browser_manager = BrowserManager(headless=self.headless)
-        session_started = False
         cookie_string = get_cookie()
         if cookie_string:
-            await self._browser_manager.inject_cookies(cookie_string)
-            await self._browser_manager.start_session()
-            session_started = True
+            await self._browser_manager.inject_cookies(cookie_string, persist=False)
+            if not await self._browser_manager.validate_cookies():
+                raise RuntimeError("认证失败，请执行 xiaoheihe login。")
         else:
             await self._browser_manager.init()
         self._api_client = XiaoheiheAPIClient(page=self._browser_manager.api_page)
         self._api_client.set_heybox_id(self._browser_manager.heybox_id)
-
-        # 启动单页会话模式：导航一次首页后常驻，后续 API 全走 fetch
-        if not session_started:
-            try:
-                await self._browser_manager.start_session()
-            except Exception as e:
-                logger.warning("单页会话启动失败，回退到传统导航模式: %s", e)
 
     async def _connect_daemon(self):
         """守护模式：通过 TCP 连接"""
@@ -153,7 +146,9 @@ class XiaoheiheClient:
         link_id = extract_link_id(post_id)
 
         if self.daemon_mode:
-            return await self._daemon_request({"action": "get_post", "link_id": link_id, "full": full})
+            return await self._daemon_request(
+                {"action": "get_post", "link_id": link_id, "full": full}
+            )
 
         if full:
             result = await self._api_client.get_post_full(link_id)
@@ -181,14 +176,18 @@ class XiaoheiheClient:
         link_id = extract_link_id(post_id)
 
         if self.daemon_mode:
-            return await self._daemon_request({
-                "action": "get_comments",
-                "link_id": link_id,
-                "page": page,
-                "page_size": page_size,
-            })
+            return await self._daemon_request(
+                {
+                    "action": "get_comments",
+                    "link_id": link_id,
+                    "page": page,
+                    "page_size": page_size,
+                }
+            )
 
-        result = await self._api_client.get_post_comments(link_id, page_num=page, limit=page_size, is_first=1)
+        result = await self._api_client.get_post_comments(
+            link_id, page_num=page, limit=page_size, is_first=1
+        )
 
         if not result:
             raise RuntimeError(f"帖子不存在或Cookie已过期: {link_id}")
@@ -213,8 +212,8 @@ class XiaoheiheClient:
             try:
                 data = await self.get_post(pid, full=full)
                 results.append(data)
-            except Exception as e:
-                results.append({"error": str(e), "post_id": pid})
+            except Exception:
+                raise RuntimeError(f"批量读取在帖子 {pid} 失败，已停止后续请求。") from None
         return results
 
     async def get_creator_data(self, post_id: str) -> Dict[str, Any]:
@@ -235,15 +234,7 @@ class XiaoheiheClient:
         if self.daemon_mode:
             return await self._daemon_request({"action": "get_article_list"})
 
-        # 创作者接口需要 hkey 签名 → 必须用导航模式（不能用 fetch）
-        # 导航到创作者页面，拦截 /bbs/app/author/concept/article/list 响应
         result = await self._api_client.get_article_list()
-
-        if not result or result.get("status") == "relogin":
-            logger.warning("Cookie 可能已过期（relogin），尝试重新验证...")
-            # 尝试用导航模式重新获取
-            result = await self._api_client.get_article_list()
-
         if not result:
             raise RuntimeError("无法获取文章列表（Cookie可能已过期或非创作者账号）")
 
@@ -287,13 +278,15 @@ class XiaoheiheClient:
             PublishResult dict（含 success/link_id/message）
         """
         if self.daemon_mode:
-            return await self._daemon_request({
-                "action": "publish",
-                "title": title,
-                "html_content": html_content,
-                "link_tag": link_tag,
-                "draft": draft,
-            })
+            return await self._daemon_request(
+                {
+                    "action": "publish",
+                    "title": title,
+                    "html_content": html_content,
+                    "link_tag": link_tag,
+                    "draft": draft,
+                }
+            )
 
         result = await self._api_client.publish_article(
             title=title,
@@ -306,6 +299,7 @@ class XiaoheiheClient:
             raise RuntimeError("发布失败（Cookie可能已过期或签名参数获取失败）")
 
         from models import PublishResult
+
         # API 可能返回 {"status":"ok","link_id":xxx,...} 或 {"status":"ok","result":{"link_id":xxx},...}
         lid = result.get("link_id")
         if not lid:
@@ -383,13 +377,15 @@ class XiaoheiheClient:
 
     async def _daemon_request(self, request: dict) -> dict:
         if not self._socket:
-            raise RuntimeError("守护进程未连接")
+            await self._connect_daemon()
 
         try:
             msg = json.dumps(request, ensure_ascii=False)
             XiaoheiheClient._send(self._socket, msg)
             response_text = XiaoheiheClient._recv(self._socket)
             response = json.loads(response_text)
+            self._socket.close()
+            self._socket = None
 
             if response.get("status") == "error":
                 raise RuntimeError(response.get("message", "未知错误"))
@@ -403,6 +399,7 @@ class XiaoheiheClient:
 
 # ==================== 守护进程服务端 ====================
 
+
 class DaemonServer:
     """小黑盒守护进程服务端 —— 保持浏览器常驻，监听 TCP 请求"""
 
@@ -413,19 +410,23 @@ class DaemonServer:
         self._browser_manager: Optional[BrowserManager] = None
         self._api_client: Optional[XiaoheiheAPIClient] = None
         self._running = False
+        self._server: Optional[asyncio.Server] = None
+        self._stop_lock = asyncio.Lock()
 
     async def start(self):
         self._browser_manager = BrowserManager(headless=self.headless)
         cookie_string = ""
         try:
             from config import get_cookie
+
             cookie_string = get_cookie()
         except Exception:
             cookie_string = ""
 
         if cookie_string:
-            await self._browser_manager.inject_cookies(cookie_string)
-            await self._browser_manager.start_session()
+            await self._browser_manager.inject_cookies(cookie_string, persist=False)
+            if not await self._browser_manager.validate_cookies():
+                raise RuntimeError("认证失败，请执行 xiaoheihe login。")
         else:
             await self._browser_manager.init()
         self._api_client = XiaoheiheAPIClient(page=self._browser_manager.api_page)
@@ -433,21 +434,34 @@ class DaemonServer:
 
         logger.info(f"守护进程就绪 (port={self.port}, heybox_id={self._browser_manager.heybox_id})")
 
-        self._running = True
-        server = await asyncio.start_server(self._handle_client, self.host, self.port)
-        addrs = ", ".join(str(s.getsockname()) for s in (server.sockets or []))
-        logger.info(f"守护进程监听: {addrs}")
-
-        async with server:
-            await server.serve_forever()
+        try:
+            self._server = await asyncio.start_server(self._handle_client, self.host, self.port)
+            self._running = True
+            addrs = ", ".join(str(s.getsockname()) for s in (self._server.sockets or []))
+            logger.info(f"守护进程监听: {addrs}")
+            async with self._server:
+                try:
+                    await self._server.serve_forever()
+                except asyncio.CancelledError:
+                    if self._running:
+                        raise
+        finally:
+            await self.stop()
 
     async def stop(self):
-        self._running = False
-        if self._api_client:
-            await self._api_client.close()
-        if self._browser_manager:
-            await self._browser_manager.close()
-        logger.info("守护进程已停止")
+        async with self._stop_lock:
+            self._running = False
+            if self._server:
+                self._server.close()
+                await self._server.wait_closed()
+                self._server = None
+            if self._api_client:
+                await self._api_client.close()
+                self._api_client = None
+            if self._browser_manager:
+                await self._browser_manager.close()
+                self._browser_manager = None
+            logger.info("守护进程已停止")
 
     async def _handle_client(
         self,
@@ -498,15 +512,21 @@ class DaemonServer:
         link_id = req.get("link_id", "")
         try:
             full = req.get("full", False)
-            result = await (self._api_client.get_post_full(link_id) if full else
-                          self._api_client.get_post_comments(link_id, page_num=1, limit=20))
+            result = await (
+                self._api_client.get_post_full(link_id)
+                if full
+                else self._api_client.get_post_comments(link_id, page_num=1, limit=20)
+            )
 
             if not result:
                 return {"status": "error", "message": f"帖子不存在或Cookie已过期: {link_id}"}
 
             post_meta, comments = DataParser.parse_comments_response(result)
             post = DataParser.parse_post_from_comments(
-                link_id, f"https://www.xiaoheihe.cn/app/bbs/link/{link_id}", comments, post_meta=post_meta
+                link_id,
+                f"https://www.xiaoheihe.cn/app/bbs/link/{link_id}",
+                comments,
+                post_meta=post_meta,
             )
             return {"status": "ok", "data": post.model_dump()}
         except Exception as e:
@@ -524,9 +544,11 @@ class DaemonServer:
             _, comments = DataParser.parse_comments_response(result)
             return {
                 "status": "ok",
-                "data": {"comments": [c.model_dump() for c in comments],
-                         "page": req.get("page", 1),
-                         "page_size": req.get("page_size", 20)},
+                "data": {
+                    "comments": [c.model_dump() for c in comments],
+                    "page": req.get("page", 1),
+                    "page_size": req.get("page_size", 20),
+                },
             }
         except Exception as e:
             return {"status": "error", "message": str(e)}
@@ -539,18 +561,23 @@ class DaemonServer:
                 await asyncio.sleep(2.0)
             try:
                 full = req.get("full")
-                result = await (self._api_client.get_post_full(pid) if full
-                               else self._api_client.get_post_comments(pid, page_num=1, limit=20))
+                result = await (
+                    self._api_client.get_post_full(pid)
+                    if full
+                    else self._api_client.get_post_comments(pid, page_num=1, limit=20)
+                )
                 if not result:
-                    results.append({"error": "帖子不存在", "post_id": pid})
-                    continue
+                    raise RuntimeError("帖子不存在，批量读取已停止。")
                 post_meta, comments = DataParser.parse_comments_response(result)
                 post = DataParser.parse_post_from_comments(
-                    pid, f"https://www.xiaoheihe.cn/app/bbs/link/{pid}", comments, post_meta=post_meta
+                    pid,
+                    f"https://www.xiaoheihe.cn/app/bbs/link/{pid}",
+                    comments,
+                    post_meta=post_meta,
                 )
                 results.append(post.model_dump())
-            except Exception as e:
-                results.append({"error": str(e), "post_id": pid})
+            except Exception:
+                raise RuntimeError(f"批量读取在帖子 {pid} 失败，已停止后续请求。") from None
         return {"status": "ok", "data": results}
 
     async def _handle_get_creator(self, req: dict) -> dict:
@@ -558,7 +585,10 @@ class DaemonServer:
         try:
             result = await self._api_client.get_creator_data(link_id)
             if not result:
-                return {"status": "error", "message": f"无法获取创作者数据（可能非自己的帖子）: {link_id}"}
+                return {
+                    "status": "error",
+                    "message": f"无法获取创作者数据（可能非自己的帖子）: {link_id}",
+                }
             stats = DataParser.parse_creator_response(result)
             return {"status": "ok", "data": stats.model_dump()}
         except Exception as e:
@@ -583,9 +613,13 @@ class DaemonServer:
                 draft=req.get("draft", True),
             )
             if not result:
-                return {"status": "error", "message": "发布失败（Cookie可能已过期或签名参数获取失败）"}
+                return {
+                    "status": "error",
+                    "message": "发布失败（Cookie可能已过期或签名参数获取失败）",
+                }
 
             from models import PublishResult
+
             lid = result.get("link_id")
             if not lid:
                 lid = (result.get("result") or {}).get("link_id")

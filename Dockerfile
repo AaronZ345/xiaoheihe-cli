@@ -1,9 +1,12 @@
 FROM python:3.12-slim
 
-LABEL maintainer="xiaoheihe-crawler"
+LABEL org.opencontainers.image.title="xiaoheihe-cli"
 LABEL description="小黑盒爬虫API - Cookie持久化 + Playwright"
 
 WORKDIR /app
+
+# Shared, read-only browser binaries for the non-root application user.
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 
 # Use Aliyun mirror for Debian packages (faster in China)
 RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
@@ -17,22 +20,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libfontconfig1 libfreetype6 libexpat1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies with mirror
-COPY requirements.txt .
-RUN pip install --no-cache-dir -i https://mirrors.aliyun.com/pypi/simple/ -r requirements.txt
-
-# Install Playwright Chromium (without system deps, we installed them above)
-RUN playwright install chromium
-
-# Copy application code
-COPY api_server.py .
-COPY browser_manager.py .
-COPY api_client.py .
-COPY data_parser.py .
-COPY models.py .
+# Install the CLI, SDK and REST service from the same source package.
+COPY . .
+RUN pip install --no-cache-dir . && playwright install chromium \
+    && chmod -R a+rX /opt/playwright-browsers
 
 # Create data directory for downloads
-RUN mkdir -p /app/data/images
+RUN mkdir -p /app/data/images /app/session && chmod 700 /app/session
 
 # Non-root user
 RUN groupadd -r appuser && useradd -r -g appuser -d /app -s /sbin/nologin appuser \
@@ -46,5 +40,7 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 ENV HEADLESS=true
 ENV PORT=8010
+ENV HOST=0.0.0.0
+ENV XHH_OPERATOR_HOME=/app/session
 
 CMD ["python", "api_server.py"]

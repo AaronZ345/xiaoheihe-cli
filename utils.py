@@ -1,8 +1,9 @@
 """
 公共工具函数
 """
-import re
+
 import os
+import re
 
 
 def extract_link_id(value: str) -> str:
@@ -21,7 +22,11 @@ def get_daemon_socket_path() -> str:
 
 def get_daemon_pid_path() -> str:
     """获取守护进程 PID 文件路径"""
-    return os.path.join(os.path.dirname(__file__), ".xiaoheihe-daemon.pid")
+    from xhh_operator.session import private_home
+
+    root = private_home()
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    return str(root / "daemon.pid")
 
 
 def format_number(n: int) -> str:

@@ -1,0 +1,25 @@
+name: Release
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
+        with:
+          python-version: '3.13'
+      - run: uv sync --extra dev --extra mcp --frozen
+      - name: Check tag version
+        run: uv run python -c "import os,tomllib; assert os.environ['GITHUB_REF_NAME']=='v'+tomllib.load(open('pyproject.toml','rb'))['project']['version']"
+      - run: uv run --extra dev --extra mcp python scripts/verify.py
+      - name: Attach wheel, source archive and checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd dist && sha256sum *.whl *.tar.gz > SHA256SUMS)
+          gh release create "$GITHUB_REF_NAME" dist/*.whl dist/*.tar.gz dist/SHA256SUMS --verify-tag --notes-file CHANGELOG.md

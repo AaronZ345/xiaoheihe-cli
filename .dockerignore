@@ -1,38 +1,24 @@
-__pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-dist/
-build/
-*.egg
-
-# Git
-.git/
-.gitignore
-
-# Virtual environments
-.env
+.git
 .venv
-venv/
-
-# Local data (will be volume-mounted)
-data/images/*
-data/*.json
-data/*.txt
-
-# Cookies (will be volume-mounted)
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.ruff_cache
+.playwright-cli
+tmp
+output
+dist
+build
+*.egg-info
+.env
 cookies.json
+.xhh_cookie
+session
+data
 
-# OS files
-.DS_Store
-Thumbs.db
-*.log
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Playwright browser data (already in image)
-.ms-playwright/
+*.csv
+*.json
+.env.*
+profile
+profiles

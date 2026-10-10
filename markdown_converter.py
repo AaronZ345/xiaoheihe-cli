@@ -33,7 +33,7 @@ import io
 import mimetypes
 import os
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional
 
 import requests
@@ -49,18 +49,21 @@ def _check_deps():
     global _PIL_AVAILABLE, _PYGMENTS_AVAILABLE, _MARKDOWN_AVAILABLE
     try:
         from PIL import Image, ImageDraw, ImageFont  # noqa: F401
+
         _PIL_AVAILABLE = True
     except ImportError:
         pass
     try:
         import pygments  # noqa: F401
-        from pygments.lexers import get_lexer_by_name  # noqa: F401
         from pygments.formatters import ImageFormatter  # noqa: F401
+        from pygments.lexers import get_lexer_by_name  # noqa: F401
+
         _PYGMENTS_AVAILABLE = True
     except ImportError:
         pass
     try:
         import markdown  # noqa: F401
+
         _MARKDOWN_AVAILABLE = True
     except ImportError:
         pass
@@ -72,14 +75,15 @@ _check_deps()
 @dataclass
 class ConvertStats:
     """转换统计信息。"""
-    code_blocks: int = 0          # 代码块转图片数量
-    tables: int = 0               # 表格转图片数量
-    inline_codes: int = 0         # 行内代码降级数量
-    strikethroughs: int = 0       # 删除线降级数量
-    links_fixed: int = 0          # 链接修复数量
-    images_fixed: int = 0         # 图片修复数量
-    images_embedded: int = 0      # 图片转为 data URL
-    images_skipped: int = 0       # 图片无法内嵌
+
+    code_blocks: int = 0  # 代码块转图片数量
+    tables: int = 0  # 表格转图片数量
+    inline_codes: int = 0  # 行内代码降级数量
+    strikethroughs: int = 0  # 删除线降级数量
+    links_fixed: int = 0  # 链接修复数量
+    images_fixed: int = 0  # 图片修复数量
+    images_embedded: int = 0  # 图片转为 data URL
+    images_skipped: int = 0  # 图片无法内嵌
 
     def summary(self) -> str:
         parts = []
@@ -291,7 +295,7 @@ class HeyBoxConverter:
             pre_content = match.group(1)
             # 提取语言标识（通常在 class 里）
             lang = ""
-            lang_match = re.search(r'language-(\w+)', pre_content)
+            lang_match = re.search(r"language-(\w+)", pre_content)
             if lang_match:
                 lang = lang_match.group(1)
 
@@ -337,8 +341,7 @@ class HeyBoxConverter:
             while i < len(lines):
                 line = lines[i].strip()
                 if line.startswith("|") or (
-                    line.startswith("-") or line.startswith(":")
-                    and "|" in line
+                    line.startswith("-") or line.startswith(":") and "|" in line
                 ):
                     i += 1
                 else:
@@ -355,12 +358,10 @@ class HeyBoxConverter:
             # 检测表头行（至少包含一个 | 且非分隔符行）
             if "|" in line and not re.match(r"^[\s|:\-]+$", line):
                 # 检查下一行是否是分隔符
-                if i + 1 < len(lines) and re.match(
-                    r"^[\s|:\-]+$", lines[i + 1].strip()
-                ):
+                if i + 1 < len(lines) and re.match(r"^[\s|:\-]+$", lines[i + 1].strip()):
                     # 找到表格结束位置
                     table_end = find_table_end(i + 2, lines)
-                    table_lines = lines[i : table_end]
+                    table_lines = lines[i:table_end]
                     table_md = "\n".join(table_lines)
 
                     img_html = self._render_table_image(table_md)
@@ -402,6 +403,7 @@ class HeyBoxConverter:
 
     def _normalize_markdown_format(self, text: str) -> str:
         """Markdown 格式降级处理。"""
+
         # 行内代码 `code` → **code**
         def replace_inline_code(m):
             self.stats.inline_codes += 1
@@ -444,9 +446,7 @@ class HeyBoxConverter:
             return f"<strong>{m.group(1)}</strong>"
 
         html = re.sub(r"<del>([\s\S]*?)</del>", replace, html, flags=re.DOTALL)
-        html = re.sub(
-            r"<s>([\s\S]*?)</s>", replace, html, flags=re.DOTALL | re.IGNORECASE
-        )
+        html = re.sub(r"<s>([\s\S]*?)</s>", replace, html, flags=re.DOTALL | re.IGNORECASE)
         return html
 
     def _normalize_links(self, text: str) -> str:
@@ -460,9 +460,7 @@ class HeyBoxConverter:
             if is_image:
                 return m.group(0)
 
-            if re.match(
-                r"https?://www\.xiaoheihe\.cn/app/bbs/link/", url, re.IGNORECASE
-            ):
+            if re.match(r"https?://www\.xiaoheihe\.cn/app/bbs/link/", url, re.IGNORECASE):
                 return m.group(0)
 
             self.stats.links_fixed += 1
@@ -473,9 +471,7 @@ class HeyBoxConverter:
             url = html_lib.unescape(m.group(3).strip())
             inner = m.group(4)
 
-            if re.match(
-                r"https?://www\.xiaoheihe\.cn/app/bbs/link/", url, re.IGNORECASE
-            ):
+            if re.match(r"https?://www\.xiaoheihe\.cn/app/bbs/link/", url, re.IGNORECASE):
                 safe_href = html_lib.escape(url, quote=True)
                 return f'<a href="{safe_href}">{inner}</a>'
 
@@ -577,10 +573,27 @@ class HeyBoxConverter:
 
         # 常见标签去掉 style/class 等属性
         simple_tags = (
-            "p", "h1", "h2", "h3", "h4", "h5", "h6",
-            "ul", "ol", "li", "blockquote",
-            "strong", "em", "code", "pre",
-            "table", "thead", "tbody", "tr", "td", "th",
+            "p",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "ul",
+            "ol",
+            "li",
+            "blockquote",
+            "strong",
+            "em",
+            "code",
+            "pre",
+            "table",
+            "thead",
+            "tbody",
+            "tr",
+            "td",
+            "th",
         )
         result = re.sub(
             rf"<({'|'.join(simple_tags)})\b[^>]*>",
@@ -602,7 +615,9 @@ class HeyBoxConverter:
 
         alt_match = re.search(r"\balt=(['\"])(.*?)\1", tag, flags=re.IGNORECASE)
         src = html_lib.escape(html_lib.unescape(src_match.group(2)), quote=True)
-        alt = html_lib.escape(html_lib.unescape(alt_match.group(2)), quote=True) if alt_match else ""
+        alt = (
+            html_lib.escape(html_lib.unescape(alt_match.group(2)), quote=True) if alt_match else ""
+        )
         return f'<img src="{src}" alt="{alt}" />'
 
     @staticmethod
@@ -839,20 +854,14 @@ class HeyBoxConverter:
 
         # 提取表头
         th_matches = re.findall(r"<th[^>]*>([\s\S]*?)</th>", html, re.IGNORECASE)
-        headers = [
-            re.sub(r"<[^>]+>", "", h).strip() for h in th_matches if h.strip()
-        ]
+        headers = [re.sub(r"<[^>]+>", "", h).strip() for h in th_matches if h.strip()]
 
         # 提取行
         tr_matches = re.findall(r"<tr[^>]*>([\s\S]*?)</tr>", html, re.IGNORECASE)
         is_header_row = True
         for tr in tr_matches:
-            td_matches = re.findall(
-                r"<t[dh][^>]*>([\s\S]*?)</t[dh]>", tr, re.IGNORECASE
-            )
-            cells = [
-                re.sub(r"<[^>]+>", "", cell).strip() for cell in td_matches if cell.strip()
-            ]
+            td_matches = re.findall(r"<t[dh][^>]*>([\s\S]*?)</t[dh]>", tr, re.IGNORECASE)
+            cells = [re.sub(r"<[^>]+>", "", cell).strip() for cell in td_matches if cell.strip()]
             if not is_header_row and cells:
                 rows.append(cells)
             is_header_row = False
@@ -884,7 +893,11 @@ class HeyBoxConverter:
                 for idx, cell in enumerate(row):
                     if idx < num_cols:
                         wrapped = self._wrap_text(cell, font, self.TABLE_MAX_WIDTH // num_cols)
-                        w = max(HeyBoxConverter._get_text_size(font, line)[0] for line in wrapped) if wrapped else 0
+                        w = (
+                            max(HeyBoxConverter._get_text_size(font, line)[0] for line in wrapped)
+                            if wrapped
+                            else 0
+                        )
                         col_widths[idx] = max(col_widths[idx], w)
 
             # 加上内边距
@@ -912,7 +925,11 @@ class HeyBoxConverter:
                         break
                     cw = col_widths[col_idx]
                     # 文字绘制（左对齐，垂直居中）
-                    text_y = y + (header_h if row_idx == 0 else row_h) // 2 - (HeyBoxConverter._get_text_size(f, cell)[1] // 2)
+                    text_y = (
+                        y
+                        + (header_h if row_idx == 0 else row_h) // 2
+                        - (HeyBoxConverter._get_text_size(f, cell)[1] // 2)
+                    )
                     draw.text(
                         (x + self.TABLE_CELL_PADDING, text_y),
                         cell,
@@ -922,8 +939,11 @@ class HeyBoxConverter:
                     # 列分隔线
                     x += cw
                     if col_idx < num_cols - 1:
-                        draw.line([x, y, x, y + (header_h if row_idx == 0 else row_h)],
-                                  fill=self.COLOR_TABLE_BORDER, width=1)
+                        draw.line(
+                            [x, y, x, y + (header_h if row_idx == 0 else row_h)],
+                            fill=self.COLOR_TABLE_BORDER,
+                            width=1,
+                        )
 
                 y += header_h if row_idx == 0 else row_h
                 # 行分隔线
@@ -931,8 +951,9 @@ class HeyBoxConverter:
                     draw.line([0, y, total_width, y], fill=self.COLOR_TABLE_BORDER, width=1)
 
             # 外边框
-            draw.rectangle([0, 0, total_width - 1, total_height - 1],
-                           outline=self.COLOR_TABLE_BORDER, width=1)
+            draw.rectangle(
+                [0, 0, total_width - 1, total_height - 1], outline=self.COLOR_TABLE_BORDER, width=1
+            )
 
             # 导出为 Base64
             buf = io.BytesIO()
@@ -964,6 +985,7 @@ class HeyBoxConverter:
 
         font_names = []
         import platform
+
         system = platform.system()
 
         if system == "Windows":

@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xiaoheihe-cli"
+version = "0.1.0"
+description = "小黑盒账号、游戏评测和社区操作 CLI"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+dependencies = ["httpx>=0.28,<1", "playwright>=1.50,<2", "qrcode[pil]>=8,<9", "pydantic>=2,<3", "markdown>=3.7,<4", "pygments>=2.17,<3", "fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.12", "build>=1.2", "pyyaml>=6"]
+mcp = ["mcp>=1.20,<2"]
+
+[project.urls]
+Repository = "https://github.com/AaronZ345/xiaoheihe-cli"
+Issues = "https://github.com/AaronZ345/xiaoheihe-cli/issues"
+
+[project.scripts]
+xiaoheihe = "xhh_operator.cli:main"
+xiaoheihe-cli = "xhh_operator.cli:main"
+
+[tool.setuptools]
+packages = ["xhh_operator", "xiaoheihe"]
+py-modules = ["api_client", "browser_manager", "config", "data_parser", "markdown_converter", "models", "utils", "cli", "api_server", "crawler"]
+
+[tool.setuptools.data-files]
+"share/xiaoheihe-cli/skills/xiaoheihe-cli" = ["skills/xiaoheihe-cli/SKILL.md"]
+"share/xiaoheihe-cli/skills/xiaoheihe-cli/agents" = ["skills/xiaoheihe-cli/agents/openai.yaml"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["browser: local browser integration tests without remote services"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+include = ["*.py", "xhh_operator/**/*.py", "xiaoheihe/**/*.py", "tests/**/*.py", "scripts/**/*.py"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I"]

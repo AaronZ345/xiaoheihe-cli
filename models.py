@@ -1,19 +1,20 @@
 """
 小黑盒数据模型
 """
+
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Optional, Union, Any
+from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field, ConfigDict
-
+from pydantic import BaseModel, ConfigDict, Field
 
 # ==================== 帖子相关模型 ====================
 
 
 class Emoji(BaseModel):
     """表情信息"""
+
     model_config = ConfigDict(extra="ignore")
 
     name: str = Field(..., description="表情名称")
@@ -24,6 +25,7 @@ class Emoji(BaseModel):
 
 class Medal(BaseModel):
     """勋章信息"""
+
     model_config = ConfigDict(extra="ignore")
 
     medal_id: int = Field(default=0, description="勋章ID")
@@ -37,6 +39,7 @@ class Medal(BaseModel):
 
 class PostAuthor(BaseModel):
     """帖子作者信息"""
+
     model_config = ConfigDict(extra="ignore")
 
     name: str = Field(default="未知用户", description="作者名称")
@@ -49,6 +52,7 @@ class PostAuthor(BaseModel):
 
 class PostStats(BaseModel):
     """帖子统计信息"""
+
     model_config = ConfigDict(extra="ignore")
 
     views: int = Field(default=0, description="观看数")
@@ -59,6 +63,7 @@ class PostStats(BaseModel):
 
 class PostImage(BaseModel):
     """帖子图片信息"""
+
     model_config = ConfigDict(extra="ignore")
 
     url: str = Field(..., description="图片URL")
@@ -67,6 +72,7 @@ class PostImage(BaseModel):
 
 class PostVideo(BaseModel):
     """帖子视频信息"""
+
     model_config = ConfigDict(extra="ignore")
 
     url: str = Field(..., description="视频URL")
@@ -78,6 +84,7 @@ class PostVideo(BaseModel):
 
 class CommentImage(BaseModel):
     """评论图片信息"""
+
     model_config = ConfigDict(extra="ignore")
 
     url: str = Field(..., description="图片URL")
@@ -89,6 +96,7 @@ class CommentImage(BaseModel):
 
 class CommentUser(BaseModel):
     """评论用户信息"""
+
     model_config = ConfigDict(extra="ignore")
 
     user_id: str = Field(default="", description="用户ID")
@@ -101,6 +109,7 @@ class CommentUser(BaseModel):
 
 class Comment(BaseModel):
     """评论信息"""
+
     model_config = ConfigDict(extra="ignore")
 
     comment_id: str = Field(default="", description="评论ID")
@@ -121,6 +130,7 @@ class Comment(BaseModel):
 
 class Post(BaseModel):
     """小黑盒帖子完整信息"""
+
     model_config = ConfigDict(
         extra="ignore",
         json_encoders={datetime: lambda v: v.isoformat()},
@@ -148,6 +158,7 @@ class Post(BaseModel):
 
 class FlowSource(BaseModel):
     """流量来源"""
+
     model_config = ConfigDict(extra="ignore")
 
     text: str = Field(default="", description="来源名称")
@@ -156,6 +167,7 @@ class FlowSource(BaseModel):
 
 class DailyTrend(BaseModel):
     """每日趋势数据"""
+
     model_config = ConfigDict(extra="ignore")
 
     timestamp: int = Field(default=0, description="日期时间戳")
@@ -173,6 +185,7 @@ class DailyTrend(BaseModel):
 
 class CreatorArticleData(BaseModel):
     """创作者文章详情数据"""
+
     model_config = ConfigDict(extra="ignore")
 
     link_id: int = Field(default=0, description="帖子ID")
@@ -189,26 +202,22 @@ class CreatorArticleData(BaseModel):
     article_desc: str = Field(default="", description="文章类型描述")
     imgs: List[str] = Field(default_factory=list, description="封面图列表")
     thumbs: List[str] = Field(default_factory=list, description="缩略图列表")
-    flow_source_info: List[FlowSource] = Field(
-        default_factory=list, description="流量来源分布"
-    )
+    flow_source_info: List[FlowSource] = Field(default_factory=list, description="流量来源分布")
     statistic_data: dict = Field(default_factory=dict, description="详细统计数据")
 
 
 class CreatorStats(BaseModel):
     """创作者数据汇总（文章详情 + 日趋势）"""
+
     model_config = ConfigDict(extra="ignore")
 
-    article: CreatorArticleData = Field(
-        default_factory=CreatorArticleData, description="文章详情"
-    )
-    data_trends: List[DailyTrend] = Field(
-        default_factory=list, description="每日数据趋势"
-    )
+    article: CreatorArticleData = Field(default_factory=CreatorArticleData, description="文章详情")
+    data_trends: List[DailyTrend] = Field(default_factory=list, description="每日数据趋势")
 
 
 class CreatorListItem(BaseModel):
     """创作者文章列表中的单条文章"""
+
     model_config = ConfigDict(extra="ignore")
 
     link_id: int = Field(default=0, description="帖子ID")
@@ -230,6 +239,7 @@ class CreatorListItem(BaseModel):
 
 class CreatorArticleList(BaseModel):
     """创作者已发布文章列表"""
+
     model_config = ConfigDict(extra="ignore")
 
     articles: List[CreatorListItem] = Field(default_factory=list, description="文章列表")
@@ -243,6 +253,7 @@ class CreatorArticleList(BaseModel):
 
 class PublishResult(BaseModel):
     """发布/草稿保存结果"""
+
     model_config = ConfigDict(extra="ignore")
 
     success: bool = Field(default=False, description="是否成功")

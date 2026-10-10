@@ -5,30 +5,31 @@
   - 所有公开方法返回 Pydantic 模型实例（非 raw dict）
   - 类型转换辅助函数提升为模块级，避免每次循环重新创建闭包
 """
+
 from __future__ import annotations
 
 import json
 import logging
 import re
 import time
-from typing import Optional, List, Tuple, Any
+from typing import Any, List, Optional, Tuple
 
 from models import (
-    Post,
     Comment,
     CommentImage,
+    CommentUser,
+    CreatorArticleData,
+    CreatorArticleList,
+    CreatorListItem,
+    CreatorStats,
+    DailyTrend,
+    Emoji,
+    FlowSource,
+    Medal,
+    Post,
     PostAuthor,
     PostImage,
     PostStats,
-    CommentUser,
-    Medal,
-    Emoji,
-    CreatorStats,
-    CreatorArticleData,
-    FlowSource,
-    DailyTrend,
-    CreatorListItem,
-    CreatorArticleList,
 )
 
 logger = logging.getLogger(__name__)
@@ -102,9 +103,7 @@ class DataParser:
         return CommentUser(
             user_id=_to_str(user_data.get("userid")),
             name=user_data.get("username", "匿名用户"),
-            level=f"Lv.{level_info.get('level', 0)}"
-            if level_info.get("status") == 1
-            else "",
+            level=f"Lv.{level_info.get('level', 0)}" if level_info.get("status") == 1 else "",
             avatar_url=user_data.get("avatar") or user_data.get("avartar", ""),
             medals=medals,
             wearing_medal=DataParser.find_wearing_medal(medals),
@@ -149,9 +148,7 @@ class DataParser:
             id_match = re.search(r"_(\d+)$", cls)
             emoji_id = id_match.group(1) if id_match else ""
 
-            emojis.append(
-                Emoji(name=name, emoji_id=emoji_id, sprite_url=sprite_url)
-            )
+            emojis.append(Emoji(name=name, emoji_id=emoji_id, sprite_url=sprite_url))
 
         return emojis
 
@@ -241,7 +238,9 @@ class DataParser:
         # 合并全部评论（full 模式）
         all_comments = result.get("_all_comments", [])
         if all_comments:
-            comments_list = [c for cd in all_comments if (c := DataParser.parse_comment(cd, emoji_map))]
+            comments_list = [
+                c for cd in all_comments if (c := DataParser.parse_comment(cd, emoji_map))
+            ]
             return post_meta, comments_list
 
         # 正常分页模式
@@ -278,10 +277,12 @@ class DataParser:
         text_data = link_data.get("text", "")
 
         # 调试：记录原始 link 数据的 keys
-        logger.debug("link_data keys=%s, title='%s', user_keys=%s",
-                     list(link_data.keys())[:15],
-                     str(link_data.get('title', ''))[:50],
-                     list(user_data.keys())[:10] if isinstance(user_data, dict) else user_data)
+        logger.debug(
+            "link_data keys=%s, title='%s', user_keys=%s",
+            list(link_data.keys())[:15],
+            str(link_data.get("title", ""))[:50],
+            list(user_data.keys())[:10] if isinstance(user_data, dict) else user_data,
+        )
 
         content_text = ""
         images: List[dict] = []

@@ -1,9 +1,10 @@
 """
 小黑盒后端 API 调用层。
 
-读接口通过拦截页面真实请求获取数据；发布接口复用页面已生成的签名参数，
-直接调用后端接口保存草稿或发布内容。
+帖子、评论和创作者查询通过签名 HTTP 请求获取数据；少量辅助接口保留页面拦截。
+发布接口直接调用后端接口保存草稿或发布内容。
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -15,8 +16,6 @@ import re
 import urllib.parse
 from contextlib import asynccontextmanager
 from typing import Optional
-
-import requests
 
 logger = logging.getLogger(__name__)
 
@@ -39,64 +38,33 @@ class XiaoheiheAPIClient:
         self._heybox_id = heybox_id
 
     async def get_post_comments(
-        self,
-        link_id: str,
-        page_num: int = 1,
-        limit: int = 20,
-        is_first: int = 1,
+        self, link_id: str, page_num: int = 1, limit: int = 20, is_first: int = 1
     ) -> Optional[dict]:
-        # 当前帖子链路依赖页面自身请求，分页参数仍由前端实际行为决定。
-        # page_num / limit 保留在接口层，避免破坏现有调用方签名。
-        _ = (page_num, limit, is_first)
-        return await self._navigate_and_intercept(
-            link_id=link_id,
-            api_pattern="/bbs/app/link/tree",
-        )
+        from xhh_operator.http import HeyboxAPI
 
-    async def get_post_full(self, link_id: str, page_size: int = 100) -> Optional[dict]:
-        all_comments = []
-        seen_page_markers: set[str] = set()
-        page_num = 1
-        result = None
-
-        while True:
-            result = await self.get_post_comments(
-                link_id=link_id,
-                page_num=page_num,
-                limit=page_size,
-                is_first=1 if page_num == 1 else 0,
+        cookies = await self._page.context.cookies()
+        async with HeyboxAPI(cookies) as api:
+            return await api.request(
+                "/bbs/app/link/tree",
+                params={
+                    "link_id": link_id,
+                    "page": page_num,
+                    "is_first": 1 if page_num == 1 and is_first else 0,
+                    "index": 1,
+                    "owner_only": 0,
+                    "offset": (page_num - 1) * limit,
+                    "limit": limit,
+                    "sort_filter": "oldest",
+                },
             )
-            if not result or "result" not in result:
-                break
 
-            comment_groups = result["result"].get("comments", [])
-            marker = ""
-            if comment_groups and isinstance(comment_groups[0], dict):
-                first_group = comment_groups[0].get("comment", [])
-                if first_group and isinstance(first_group[0], dict):
-                    marker = str(first_group[0].get("commentid", ""))
+    async def get_post_full(self, link_id: str, page_size: int = 20) -> Optional[dict]:
+        from xhh_operator.comments import read_thread
+        from xhh_operator.http import HeyboxAPI
 
-            if marker and marker in seen_page_markers:
-                logger.warning("检测到评论分页未前进，提前停止 full 抓取: link_id=%s", link_id)
-                break
-            if marker:
-                seen_page_markers.add(marker)
-
-            for group in comment_groups:
-                if "comment" in group:
-                    all_comments.extend(group["comment"])
-
-            last_comments = (comment_groups or [[]])[-1].get("comment", [])
-            has_more = bool(last_comments and last_comments[0].get("has_more") == 1)
-            if not has_more:
-                break
-
-            page_num += 1
-            await asyncio.sleep(1.0)
-
-        if result and "result" in result:
-            result["result"]["_all_comments"] = all_comments
-        return result
+        cookies = await self._page.context.cookies()
+        async with HeyboxAPI(cookies) as api:
+            return await read_thread(api, link_id, page_size=page_size)
 
     async def get_emojis(self) -> Optional[dict]:
         return await self._navigate_and_intercept(
@@ -112,18 +80,28 @@ class XiaoheiheAPIClient:
         )
 
     async def get_creator_data(self, link_id: str) -> Optional[dict]:
-        return await self._navigate_and_intercept(
-            link_id=link_id,
-            api_pattern="/bbs/app/author/concept/article/data",
-            url=f"{_BASE_URL}/creator/content_management/detail/{link_id}",
+        return await self._read_api(
+            "/bbs/app/author/concept/article/data", params={"link_id": link_id}
         )
 
     async def get_article_list(self) -> Optional[dict]:
-        return await self._navigate_and_intercept(
-            link_id="list",
-            api_pattern="/bbs/app/author/concept/article/list",
-            url=f"{_BASE_URL}/creator/content_management/home",
+        return await self._read_api(
+            "/bbs/app/author/concept/article/list",
+            params={
+                "article_type": "all",
+                "artilce_state": "all",
+                "sort_filter": "create_at",
+                "offset": 0,
+                "limit": 20,
+            },
         )
+
+    async def _read_api(self, path: str, *, params: dict):
+        from xhh_operator.http import HeyboxAPI
+
+        cookies = await self._page.context.cookies()
+        async with HeyboxAPI(cookies) as api:
+            return await api.request(path, params=params)
 
     async def publish_article(
         self,
@@ -133,127 +111,32 @@ class XiaoheiheAPIClient:
         draft: bool = True,
         edit_link_id: Optional[str] = None,
     ) -> Optional[dict]:
-        """
-        发布文章或保存草稿。
+        from xhh_operator.http import HeyboxAPI
+        from xhh_operator.session import safe_result
+        from xhh_operator.signing import workshop_params
 
-        做法：
-        1. 读取浏览器里的登录 Cookie。
-        2. 访问创作者后台，拦截一条已签名的 GET 请求，复用其 query 参数。
-        3. 用相同会话直接 POST 到发布接口。
-        """
-        all_cookies = await self._page.context.cookies()
-        cookie_dict = {
-            c["name"]: c["value"]
-            for c in all_cookies
-            if c.get("name") and c.get("value")
-        }
-        if not cookie_dict:
-            logger.error("无 Cookie，请先登录")
-            return {"success": False, "message": "未登录，请先运行 login"}
-
-        heybox_id = cookie_dict.get("user_heybox_id") or cookie_dict.get("heybox_id") or "0"
-        device_id = cookie_dict.get("device_id") or "02f61cdb0c14c026f9e6865d7744b86e"
-
-        text_blocks = (
-            self._build_editor_blocks(html_content)
-            if self._env_flag("XHH_STRUCTURED_BLOCKS")
-            else [{"text": html_content, "type": "html"}]
-        )
-        text_json = json.dumps(text_blocks, ensure_ascii=False)
-        post_body = {
-            "text": text_json,
+        cookies = await self._page.context.cookies()
+        form = {
             "title": title,
-            "desc": "",
+            "text": json.dumps(self._build_editor_blocks(html_content), ensure_ascii=False),
             "post_type": "1",
-            "view_limit": "1",
             "link_tag": str(link_tag),
-            "words_count": str(len(html_content)),
-            "original": "1",
-            "declaration": "1",
-            "extra_declaration": "-1",
             "draft": "1" if draft else "0",
-            "heybox_id": heybox_id,
+            "original": "1",
+            "view_limit": "1",
+            "words_count": str(len(html_content)),
         }
         if edit_link_id:
-            post_body["edit"] = "1"
-            post_body["link_id"] = edit_link_id
-
-        signature_params = await self._get_signature_query_params(
-            url=f"{_BASE_URL}/creator/content_management/home",
-            api_pattern="/bbs/app/author/concept/article/list",
-        )
-        if not signature_params:
-            logger.error("无法获取签名参数")
-            return {"success": False, "message": "无法获取签名参数，请尝试重新登录"}
-
-        query_params = {}
-        for key in (
-            "os_type",
-            "app",
-            "client_type",
-            "version",
-            "web_version",
-            "x_client_type",
-            "x_app",
-            "x_os_type",
-            "device_info",
-            "device_id",
-            "hkey",
-            "_time",
-            "nonce",
-        ):
-            if signature_params.get(key):
-                query_params[key] = signature_params[key]
-
-        query_params["heybox_id"] = signature_params.get("heybox_id") or heybox_id
-        query_params.setdefault("device_id", device_id)
-        query_params.setdefault("device_info", "Chrome")
-
-        post_url = f"{_API_BASE}/bbs/app/api/link/post?{urllib.parse.urlencode(query_params)}"
-        headers = {
-            "Origin": "https://www.xiaoheihe.cn",
-            "Referer": "https://www.xiaoheihe.cn/",
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36"
-            ),
-            "accept": "application/json",
-            "content-type": "application/x-www-form-urlencoded;charset=utf-8",
-            "DNT": "1",
-            "Sec-Fetch-Dest": "empty",
-            "Sec-Fetch-Mode": "cors",
-            "Sec-Fetch-Site": "same-site",
+            form.update({"edit": "1", "link_id": edit_link_id})
+        async with HeyboxAPI(cookies) as api:
+            result = await api.request("/bbs/app/api/link/post", form=form, extra=workshop_params)
+        return {
+            "success": True,
+            "link_id": result.get("link_id") or (result.get("result") or {}).get("link_id"),
+            "message": "提交成功",
+            "is_draft": draft,
+            "raw": safe_result(result),
         }
-
-        try:
-            response = await asyncio.to_thread(
-                requests.post,
-                post_url,
-                data=post_body,
-                cookies=cookie_dict,
-                headers=headers,
-                timeout=15,
-            )
-            result = response.json()
-        except Exception as e:
-            logger.error("发布请求异常: %s", e)
-            return {"success": False, "message": f"请求异常: {e}", "is_draft": draft}
-
-        action = "草稿" if draft else "发布"
-        if result.get("status") == "ok":
-            link_id = result.get("link_id") or (result.get("result") or {}).get("link_id")
-            logger.info("✅ %s成功! link_id=%s", action, link_id)
-            return {
-                "success": True,
-                "link_id": link_id,
-                "message": f"{action}成功",
-                "is_draft": draft,
-                "raw": result,
-            }
-
-        msg = result.get("msg") or result.get("message") or "发布失败"
-        logger.warning("❌ %s失败: %s", action, msg)
-        return {"success": False, "message": msg, "is_draft": draft, "raw": result}
 
     @staticmethod
     def _env_flag(name: str) -> bool:
@@ -274,7 +157,7 @@ class XiaoheiheAPIClient:
             if not img_block:
                 continue
 
-            XiaoheiheAPIClient._append_html_block(blocks, normalized[last_index:match.start()])
+            XiaoheiheAPIClient._append_html_block(blocks, normalized[last_index : match.start()])
             blocks.append(img_block)
             last_index = match.end()
 
@@ -327,7 +210,10 @@ class XiaoheiheAPIClient:
             return True
 
         host = (urllib.parse.urlparse(src).hostname or "").lower()
-        return host.endswith("xiaoheihe.cn") or host.endswith("max-c.com")
+        return any(
+            host == domain or host.endswith("." + domain)
+            for domain in ("xiaoheihe.cn", "max-c.com", "myqcloud.com")
+        )
 
     @staticmethod
     def _is_inside_text_container(html_content: str, index: int) -> bool:
@@ -355,11 +241,7 @@ class XiaoheiheAPIClient:
                     parsed = urllib.parse.urlparse(resp.url)
                     qs = urllib.parse.parse_qs(parsed.query)
                     if qs.get("hkey") and qs.get("_time") and qs.get("nonce"):
-                        captured[0] = {
-                            key: values[0]
-                            for key, values in qs.items()
-                            if values
-                        }
+                        captured[0] = {key: values[0] for key, values in qs.items() if values}
                         ready.set()
                 except Exception:
                     pass

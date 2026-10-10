@@ -1,0 +1,4 @@
+interface:
+  display_name: "小黑盒 CLI"
+  short_description: "查询个人游戏记录与评分短评，管理帖子评论、图片和视频发布"
+  default_prompt: "使用 $xiaoheihe-cli，按我的明确请求查询或操作小黑盒。"
