@@ -28,6 +28,8 @@ XHH_RUN_BROWSER_TESTS=1 uv run --extra dev --extra mcp pytest -q -m browser
 
 Windows 可先在当前 PowerShell 设置 `$env:XHH_RUN_BROWSER_TESTS='1'`。未安装的运行时明确跳过，不能据此宣称真实登录或跨平台发布通过。
 
+原生 Firefox／Safari 测试另设 `XHH_RUN_NATIVE_TESTS=1`，要求对应浏览器和驱动已就绪。测试使用本机临时页面和模拟账号；CI 的 `XHH_REQUIRE_NATIVE_TESTS=1` 会把应有运行时缺失视为失败。
+
 ## 目录
 
 - `xhh_operator/`：命令、账号与社区操作、评论、媒体上传、诊断、MCP 和技能安装。

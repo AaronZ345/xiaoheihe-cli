@@ -8,7 +8,7 @@
 |---|---|
 | GitHub CI：三系统 × Python 3.11／3.12／3.13 | 九组全部通过 |
 | 初次 CI 测试数量 | macOS／Linux 每组 134 通过、5 跳过；Windows 每组 133 通过、6 跳过 |
-| Python 3.13.5，本轮启用浏览器测试 | 218 通过，8 跳过；系统未安装的命名浏览器和单独启用的原生测试按条件跳过 |
+| Python 3.13.5，本轮启用浏览器测试 | 219 通过，8 跳过；系统未安装的命名浏览器和单独启用的原生测试按条件跳过 |
 | GitHub Linux 浏览器任务 | 5 项通过；Chromium、Chrome、Edge、Firefox、WebKit 合成登录流程通过 |
 | Docker 自动检查 | CI 构建镜像并检查命令启动、会话卷写入和无网络 Chromium 页面；结果见 [CI](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml) |
 | Ruff、锁文件、wheel 与源码包构建 | 通过 |
@@ -88,3 +88,5 @@ Windows 初次执行暴露中文文件的默认编码问题，修复后九组矩
 - WebDriver 契约测试核验本机连接、全新会话、Cookie 过滤、一次创建、错误脱敏和进程清理。
 - 原生浏览器测试只访问临时本机页面，账号核验使用合成响应。macOS 本机 Safari 返回首次远程自动化设置要求，配置要求有明确提示。
 - 浏览器 CI 使用三系统独立环境；macOS 环境配置 Safari，Linux 环境安装 Brave，并测试各系统原生 Firefox。运行记录见 [浏览器任务](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml)。
+- macOS 浏览器任务 7 项通过，Windows 6 项通过，包括原生 Firefox，以及 macOS 原生 Safari。Linux 首轮安装 Brave 时缺少签名包依赖，已改为使用官方软件仓库安装。
+- SDK 会话复用回归测试验证：原生浏览器登录后，帖子查询直接使用会话，页面在辅助接口需要时再准备。

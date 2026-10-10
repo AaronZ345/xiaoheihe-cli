@@ -46,7 +46,11 @@ async def lifespan(app: FastAPI):
     browser_manager = BrowserManager(headless=headless)
     await browser_manager.init()
 
-    api_client = XiaoheiheAPIClient(page=browser_manager.api_page)
+    api_client = XiaoheiheAPIClient(
+        page=browser_manager.api_page,
+        cookies=getattr(browser_manager, "cookies", None),
+        page_provider=getattr(browser_manager, "_ensure_api_page", None),
+    )
     api_client.set_heybox_id(browser_manager.heybox_id)
 
     logger.info("API服务器准备就绪")
@@ -353,7 +357,11 @@ async def refresh_cookies():
         if browser_manager:
             await browser_manager.refresh_cookies()
 
-            api_client = XiaoheiheAPIClient(page=browser_manager.api_page)
+            api_client = XiaoheiheAPIClient(
+                page=browser_manager.api_page,
+                cookies=getattr(browser_manager, "cookies", None),
+                page_provider=getattr(browser_manager, "_ensure_api_page", None),
+            )
             api_client.set_heybox_id(browser_manager.heybox_id)
 
             return JSONResponse(

@@ -51,6 +51,8 @@ Chromium 系的自定义程序需要支持 Chromium 自动化接口；Firefox �
 
 可通过 `XHH_BROWSER_ENGINE`、`XHH_BROWSER_CHANNEL`、`XHH_BROWSER_EXECUTABLE`、`XHH_BROWSER_DRIVER` 配置；CLI 指定的名称和路径优先。SDK 和守护进程共用登录会话，少量辅助页面使用 Playwright 引擎。`xiaoheihe browsers` 显示配套运行时、系统浏览器及驱动的安装状态。
 
+SDK 和 REST 的帖子、评论及创作者 HTTP 查询直接复用会话；需要网页拦截的辅助接口再按需启动页面。
+
 macOS 识别系统和用户 Applications 目录；Windows 识别 Program Files、Program Files (x86)、LocalAppData 和 Arc 应用别名；Linux 识别 PATH 中的发行版命令。便携版或其他安装目录可用 `--executable-path`。Linux 桌面登录需要显示服务；Firefox Snap 可指定匹配的 Snap geckodriver。
 
 ## 登录过程

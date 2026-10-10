@@ -217,3 +217,43 @@ def test_windows_default_session_uses_local_app_data(tmp_path, monkeypatch):
     monkeypatch.setattr(session.sys, "platform", "win32")
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     assert session.private_home() == tmp_path / "xiaoheihe-cli"
+
+
+def test_native_login_session_can_query_sdk_without_starting_a_second_browser(
+    tmp_path, monkeypatch
+):
+    import xiaoheihe
+    from browser_manager import BrowserManager
+
+    monkeypatch.setenv("XHH_OPERATOR_HOME", str(tmp_path / "session"))
+    monkeypatch.setenv("XHH_BROWSER_ENGINE", "safari")
+    store = SessionStore(tmp_path / "session")
+    store.save([{"name": "pkey", "value": "fixture-only", "domain": ".xiaoheihe.cn"}], "42")
+    monkeypatch.setattr(xiaoheihe, "get_cookie", lambda: "")
+
+    async def forbidden(*args, **kwargs):
+        raise AssertionError("HTTP queries must reuse a native login session")
+
+    monkeypatch.setattr(BrowserManager, "_launch_browser", forbidden)
+
+    def handler(request):
+        assert "fixture-only" in request.headers.get("cookie", "")
+        result = (
+            {"profile": {"heybox_id": "42"}}
+            if request.url.path == "/account/restore_login"
+            else {"link": {"linkid": "123", "title": "fixture"}, "comments": []}
+        )
+        return httpx.Response(200, json={"status": "ok", "result": result})
+
+    monkeypatch.setattr(
+        "xhh_operator.http.HeyboxAPI",
+        lambda cookies: auth.HeyboxAPI(cookies, transport=httpx.MockTransport(handler), interval=0),
+    )
+
+    async def check():
+        async with xiaoheihe.XiaoheiheClient() as client:
+            result = await client.get_post("123")
+            assert result["title"] == "fixture"
+            assert client._browser_manager.api_page is None
+
+    asyncio.run(check())

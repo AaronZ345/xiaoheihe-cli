@@ -37,12 +37,11 @@ jobs:
         run: sudo safaridriver --enable
       - name: Install Brave on the disposable Linux runner
         if: runner.os == 'Linux'
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p tmp/browser-runtime
-          gh release download --repo brave/brave-browser --pattern 'brave-browser_*_amd64.deb' --dir tmp/browser-runtime
-          sudo apt-get install -y ./tmp/browser-runtime/*.deb
+          sudo curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg
+          sudo curl -fsSLo /etc/apt/sources.list.d/brave-browser-release.sources https://brave-browser-apt-release.s3.brave.com/brave-browser.sources
+          sudo apt-get update
+          sudo apt-get install -y brave-browser
       - run: uv run --extra dev pytest -q -m browser
         env:
           XHH_RUN_BROWSER_TESTS: '1'

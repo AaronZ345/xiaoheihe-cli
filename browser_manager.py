@@ -69,7 +69,7 @@ class BrowserManager:
             self._cookies = saved_cookies
             self._heybox_id = self._extract_heybox_id(saved_cookies)
 
-            if await self.validate_cookies():
+            if await self.validate_cookies(prepare_page=False):
                 logger.info("Cookie 有效，直接使用 API 模式")
                 return
 
@@ -159,10 +159,10 @@ class BrowserManager:
             logger.error("认证失败，请执行 xiaoheihe login。")
             return False
 
-    async def validate_cookies(self) -> bool:
-        """验证当前 Cookie；成功时顺带准备 API 页面。"""
+    async def validate_cookies(self, *, prepare_page=True) -> bool:
+        """校验会话；HTTP 调用可延迟准备页面。"""
         is_valid = await self._verify_cookies()
-        if is_valid:
+        if is_valid and prepare_page:
             await self._ensure_api_page()
         return is_valid
 
@@ -176,12 +176,13 @@ class BrowserManager:
     async def _ensure_api_page(self):
         """确保存在用于 API 请求的页面"""
         if self._api_page and not self._api_page.is_closed():
-            return
+            return self._api_page
 
         if not self._context:
             await self._launch_browser(headless=self.headless)
 
         self._api_page = await self._context.new_page()
+        return self._api_page
 
     async def _launch_browser(self, headless: Optional[bool] = None):
         """使用与 CLI 登录一致的浏览器选择、环境配置和错误处理。"""
@@ -200,7 +201,15 @@ class BrowserManager:
             logger.info("浏览器已启动：%s", selected)
             self._context = await self._browser.new_context()
             if self._cookies:
-                await self._context.add_cookies(self._cookies)
+                await self._context.add_cookies(
+                    [
+                        {
+                            **{key: value for key, value in cookie.items() if key != "expiry"},
+                            **({"expires": cookie["expiry"]} if "expiry" in cookie else {}),
+                        }
+                        for cookie in self._cookies
+                    ]
+                )
         except BaseException:
             await self._shutdown()
             raise
@@ -217,7 +226,6 @@ class BrowserManager:
         await login_browser(store)
         session = store.require()
         self._cookies, self._heybox_id = session["cookies"], session["user_id"]
-        await self._ensure_api_page()
 
     async def api_login(self, phone: str, password: str) -> bool:
         """

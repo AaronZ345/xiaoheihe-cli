@@ -4,6 +4,7 @@
 
 - 补齐三系统的命名浏览器和安装路径识别，支持 Brave、Vivaldi、Opera、Arc、系统 Chromium、Chrome／Edge 的不同通道。
 - 新增系统 Firefox 和 macOS Safari 的 WebDriver 登录，支持便携程序和驱动路径；Windows 会话默认保存在 LocalAppData。
+- SDK 与 REST 的 HTTP 查询直接复用登录会话，辅助页面按需启动。
 - 浏览器 CI 扩展到 macOS、Windows、Linux，覆盖独立上下文、原生 Firefox／Safari 登录和退出清理。
 
 - 包名、主命令和 Skill 统一为 `xiaoheihe-cli`，保留 `xiaoheihe` 命令别名和 Python 客户端。

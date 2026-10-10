@@ -47,7 +47,8 @@ def test_saved_session_queries_do_not_wait_for_website_homepage(monkeypatch, mod
         async def inject_cookies(self, cookie, persist):
             assert not persist
 
-        async def validate_cookies(self):
+        async def validate_cookies(self, *, prepare_page=True):
+            assert not prepare_page
             return True
 
         async def start_session(self):

@@ -78,9 +78,13 @@ class XiaoheiheClient:
         """
         self._browser_manager = BrowserManager(headless=self.headless)
         await self._browser_manager.inject_cookies(cookie_string, persist=False)
-        if not await self._browser_manager.validate_cookies():
+        if not await self._browser_manager.validate_cookies(prepare_page=False):
             raise RuntimeError("认证失败，请执行 xiaoheihe login。")
-        self._api_client = XiaoheiheAPIClient(page=self._browser_manager.api_page)
+        self._api_client = XiaoheiheAPIClient(
+            page=self._browser_manager.api_page,
+            cookies=getattr(self._browser_manager, "cookies", None),
+            page_provider=getattr(self._browser_manager, "_ensure_api_page", None),
+        )
         self._api_client.set_heybox_id(self._browser_manager.heybox_id)
         logger.info("Cookie 注入模式就绪 (heybox_id=%s)", self._browser_manager.heybox_id)
 
@@ -96,7 +100,11 @@ class XiaoheiheClient:
         )
         if result:
             await self._browser_manager.start_session()
-            self._api_client = XiaoheiheAPIClient(page=self._browser_manager.api_page)
+            self._api_client = XiaoheiheAPIClient(
+                page=self._browser_manager.api_page,
+                cookies=getattr(self._browser_manager, "cookies", None),
+                page_provider=getattr(self._browser_manager, "_ensure_api_page", None),
+            )
             self._api_client.set_heybox_id(self._browser_manager.heybox_id)
         return result
 
@@ -106,11 +114,15 @@ class XiaoheiheClient:
         cookie_string = get_cookie()
         if cookie_string:
             await self._browser_manager.inject_cookies(cookie_string, persist=False)
-            if not await self._browser_manager.validate_cookies():
+            if not await self._browser_manager.validate_cookies(prepare_page=False):
                 raise RuntimeError("认证失败，请执行 xiaoheihe login。")
         else:
             await self._browser_manager.init()
-        self._api_client = XiaoheiheAPIClient(page=self._browser_manager.api_page)
+        self._api_client = XiaoheiheAPIClient(
+            page=self._browser_manager.api_page,
+            cookies=getattr(self._browser_manager, "cookies", None),
+            page_provider=getattr(self._browser_manager, "_ensure_api_page", None),
+        )
         self._api_client.set_heybox_id(self._browser_manager.heybox_id)
 
     async def _connect_daemon(self):
@@ -425,11 +437,15 @@ class DaemonServer:
 
         if cookie_string:
             await self._browser_manager.inject_cookies(cookie_string, persist=False)
-            if not await self._browser_manager.validate_cookies():
+            if not await self._browser_manager.validate_cookies(prepare_page=False):
                 raise RuntimeError("认证失败，请执行 xiaoheihe login。")
         else:
             await self._browser_manager.init()
-        self._api_client = XiaoheiheAPIClient(page=self._browser_manager.api_page)
+        self._api_client = XiaoheiheAPIClient(
+            page=self._browser_manager.api_page,
+            cookies=getattr(self._browser_manager, "cookies", None),
+            page_provider=getattr(self._browser_manager, "_ensure_api_page", None),
+        )
         self._api_client.set_heybox_id(self._browser_manager.heybox_id)
 
         logger.info(f"守护进程就绪 (port={self.port}, heybox_id={self._browser_manager.heybox_id})")

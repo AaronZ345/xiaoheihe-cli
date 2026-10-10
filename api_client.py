@@ -27,9 +27,22 @@ _IMG_TAG_RE = re.compile(r"<img\b[^>]*>", re.IGNORECASE)
 class XiaoheiheAPIClient:
     """小黑盒后端 API 客户端。"""
 
-    def __init__(self, page):
+    def __init__(self, page=None, *, cookies=None, page_provider=None):
         self._page = page
+        self._cookie_values = list(cookies or [])
+        self._page_provider = page_provider
         self._heybox_id: Optional[str] = None
+
+    async def _cookies(self):
+        return await self._page.context.cookies() if self._page else self._cookie_values
+
+    async def _ensure_page(self):
+        if self._page is None:
+            if self._page_provider is None:
+                from xhh_operator.errors import OperatorError
+
+                raise OperatorError("该辅助接口需要浏览器页面。", "browser")
+            self._page = await self._page_provider()
 
     async def close(self):
         """关闭客户端（页面生命周期由 BrowserManager 管理）。"""
@@ -42,7 +55,7 @@ class XiaoheiheAPIClient:
     ) -> Optional[dict]:
         from xhh_operator.http import HeyboxAPI
 
-        cookies = await self._page.context.cookies()
+        cookies = await self._cookies()
         async with HeyboxAPI(cookies) as api:
             return await api.request(
                 "/bbs/app/link/tree",
@@ -62,7 +75,7 @@ class XiaoheiheAPIClient:
         from xhh_operator.comments import read_thread
         from xhh_operator.http import HeyboxAPI
 
-        cookies = await self._page.context.cookies()
+        cookies = await self._cookies()
         async with HeyboxAPI(cookies) as api:
             return await read_thread(api, link_id, page_size=page_size)
 
@@ -99,7 +112,7 @@ class XiaoheiheAPIClient:
     async def _read_api(self, path: str, *, params: dict):
         from xhh_operator.http import HeyboxAPI
 
-        cookies = await self._page.context.cookies()
+        cookies = await self._cookies()
         async with HeyboxAPI(cookies) as api:
             return await api.request(path, params=params)
 
@@ -115,7 +128,7 @@ class XiaoheiheAPIClient:
         from xhh_operator.session import safe_result
         from xhh_operator.signing import workshop_params
 
-        cookies = await self._page.context.cookies()
+        cookies = await self._cookies()
         form = {
             "title": title,
             "text": json.dumps(self._build_editor_blocks(html_content), ensure_ascii=False),
@@ -246,6 +259,7 @@ class XiaoheiheAPIClient:
                 except Exception:
                     pass
 
+        await self._ensure_page()
         self._page.on("response", on_response)
         try:
             await self._page.goto(url, wait_until="domcontentloaded", timeout=20000)
@@ -273,6 +287,7 @@ class XiaoheiheAPIClient:
     ) -> Optional[dict]:
         url = f"{base_url}{endpoint}"
         try:
+            await self._ensure_page()
             result = await self._page.evaluate(
                 """async ({url, method, bodyStr}) => {
                     const options = {
@@ -317,6 +332,7 @@ class XiaoheiheAPIClient:
                 except Exception:
                     pass
 
+        await self._ensure_page()
         self._page.on("response", on_response)
         try:
             yield captured, received
