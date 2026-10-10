@@ -8,6 +8,7 @@
 
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB)](https://www.python.org/)
 [![MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
+[![CI](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml)
 
 [安装](#安装) · [常用命令](#常用命令) · [助手接入](#助手接入) · [浏览器](docs/browser-login.md) · [开发](CONTRIBUTING.md)
 

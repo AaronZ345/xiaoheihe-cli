@@ -6,16 +6,20 @@
 
 | 环境或检查 | 结果 |
 |---|---|
-| Python 3.11.15 | 133 通过，5 个浏览器测试未启用 |
-| Python 3.12.13 | 133 通过，5 个浏览器测试未启用 |
-| Python 3.13.5，启用浏览器测试 | 137 通过，1 个 Edge 测试跳过 |
+| GitHub CI：三系统 × Python 3.11／3.12／3.13 | 九组全部通过 |
+| CI 测试数量 | macOS／Linux 每组 134 通过、5 跳过；Windows 每组 133 通过、6 跳过 |
+| Python 3.13.5，本机启用浏览器测试 | 138 通过，1 个 Edge 测试跳过 |
+| GitHub Linux 浏览器任务 | 5 项通过；Chromium、Chrome、Edge、Firefox、WebKit 合成登录流程通过 |
+| Docker 自动检查 | CI 构建镜像并检查命令启动、会话卷写入和无网络 Chromium 页面；结果见 [CI](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml) |
 | Ruff、锁文件、wheel 与源码包构建 | 通过 |
 | wheel 独立安装、CLI 与 SDK/REST 导入 | 通过 |
 | 会话和运行时文件的发行包排除检查 | 通过 |
 
-浏览器测试实际启动 Chromium、Chrome、Firefox 和 WebKit，以合成登录页面和账号响应验证登录处理逻辑；没有读取本机浏览器个人资料。Chromium、Firefox、WebKit 使用本机缓存运行时的自定义路径，Chrome 使用系统安装通道。Edge 未安装，官方安装包下载超时，因此不计为通过。
+浏览器测试实际启动引擎，以合成登录页面和账号响应验证登录处理逻辑。macOS 本机的 Chromium、Chrome、Firefox、WebKit 通过；Chromium、Firefox、WebKit 使用缓存运行时的自定义路径，Chrome 使用系统安装通道。本机 Edge 未安装，安装包下载超时，因此跳过；Linux CI 的五种浏览器均通过。
 
-测试仍有两条依赖弃用警告，来自 Starlette TestClient 的 HTTPX 兼容层和 Pydantic 的 `json_encoders`；不是测试失败。Windows、Linux、Docker 和完整 GitHub CI 尚未实跑。
+浏览器测试在默认矩阵中跳过；Windows 还跳过 POSIX 符号链接测试。测试有两条依赖弃用警告，来自 Starlette TestClient 的 HTTPX 兼容层和 Pydantic 的 `json_encoders`。
+
+Windows 初次执行暴露中文文件的默认编码问题，修复后九组矩阵通过。CLI 输出、文件读取和技能安装均使用 UTF-8，另有非 UTF-8 进程环境的命令帮助回归测试。执行记录见 [GitHub Actions](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml)。
 
 ## 真实接口与安装包
 
@@ -59,7 +63,7 @@
 | 全量评论、连续短评查询 | 部分请求触发验证码，明确报错并停止该项请求；不计为真实全量读取成功 |
 | 创作者统计 | 没有可用的本人文章；已做接口契约测试，真实统计查询不适用于本次账号状态 |
 
-本轮线上查询为只读操作。验证码按平台限制记录，不自动重复请求或处理验证码；分页、游标、错误状态和输出格式同时用合成数据测试覆盖。公开写入、Docker 和各浏览器完整真实登录的未验收状态保持不变。
+本轮线上查询为只读操作。验证码按平台限制记录，不自动重复请求或处理验证码；分页、游标、错误状态和输出格式同时用合成数据测试覆盖。公开写入和各浏览器完整真实登录仍需分别验收。
 
 接口属于平台的非公开协议。`accepted` 和 `verified` 分别表示接收与回读确认；请求失败或结果未知时不自动重发写请求。
 

@@ -20,6 +20,7 @@ jobs:
       - run: uv run --extra dev --extra mcp python scripts/verify.py
   browser:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - uses: astral-sh/setup-uv@d0d8abe699bfb85fec6de9f7adb5ae17292296ff
@@ -32,6 +33,7 @@ jobs:
           XHH_RUN_BROWSER_TESTS: '1'
   container:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
       - run: docker build -t xiaoheihe-cli:validation .

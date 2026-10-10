@@ -8,9 +8,6 @@ WORKDIR /app
 # Shared, read-only browser binaries for the non-root application user.
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 
-# Use Aliyun mirror for Debian packages (faster in China)
-RUN sed -i 's|deb.debian.org|mirrors.aliyun.com|g' /etc/apt/sources.list.d/debian.sources 2>/dev/null || true
-
 # Install system dependencies for Chromium
 RUN apt-get update && apt-get install -y --no-install-recommends \
     wget gnupg ffmpeg \
