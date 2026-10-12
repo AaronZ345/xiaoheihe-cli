@@ -2,15 +2,13 @@
 
 # xiaoheihe-cli
 
-**在终端查询游戏记录和个人短评，管理小黑盒社区内容。**
+在终端查询游戏记录和个人短评，管理小黑盒社区内容。支持 CLI、Python SDK、REST API、MCP 和 Agent Skill。
 
-支持 CLI、Python SDK、REST API、MCP 和 Agent Skill。
-
+[![CI](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/badge/Python-%E2%89%A53.11-3776AB)](https://www.python.org/)
 [![MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
-[![CI](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/AaronZ345/xiaoheihe-cli/actions/workflows/ci.yml)
 
-[安装](#安装) · [常用命令](#常用命令) · [助手接入](#助手接入) · [浏览器](docs/browser-login.md) · [开发](CONTRIBUTING.md)
+[安装](#安装) · [常用命令](#常用命令) · [助手接入](#助手接入) · [浏览器](#浏览器) · [文档](#文档) · [开发](CONTRIBUTING.md)
 
 </div>
 
@@ -24,7 +22,7 @@
 | 视频 | 本地视频上传、自动或指定封面、正式发布；视频默认仅预览 |
 | 评论与回复 | 文字和图片评论；按 ID 或完整正文定位目标，重复正文不自动选择 |
 | 批量与导出 | 评论分页、批量帖子、创作者数据、JSON／表格／CSV、文件输出 |
-| 助手接入 | 18 个 MCP 工具、Agent Skill、本地诊断与 REST 服务 |
+| 助手接入 | 18 个 MCP 工具、Agent Skill、ChatGPT Dots、本地诊断与 REST 服务 |
 | 浏览器登录 | macOS／Windows／Linux 的 Chrome、Edge、Chromium、Brave、Vivaldi、Opera、Firefox；macOS Safari、macOS／Windows Arc；支持便携程序和自定义路径 |
 
 ## 安装
@@ -47,11 +45,7 @@ uv run xiaoheihe-cli --help
 uv run xiaoheihe-cli doctor
 ```
 
-本地 wheel 也可以用 `uv tool install /path/to/xiaoheihe_cli-0.1.0-py3-none-any.whl` 安装。
-
-`xiaoheihe` 是兼容命令别名。网页登录可使用已安装的 Chrome 或 Edge；需要配套引擎时，在工具环境运行 `playwright install chromium`。源码环境可执行 `uv run playwright install chromium firefox webkit`。这些操作不读取日常浏览器的个人资料。
-
-更多浏览器可用 `login --browser brave|vivaldi|opera|arc|firefox-system|safari` 选择；安装路径、系统 Firefox 驱动和 Safari 首次设置见 [浏览器登录](docs/browser-login.md)。
+本地 wheel 也可以用 `uv tool install /path/to/xiaoheihe_cli-0.1.0-py3-none-any.whl` 安装。`xiaoheihe` 是兼容命令别名。
 
 ## 常用命令
 
@@ -89,6 +83,26 @@ xiaoheihe-cli comment reply POST_ID --target-text "目标评论完整正文" --t
 
 ## 助手接入
 
+### ChatGPT Dots
+
+ChatGPT Dots 可通过已连接的电脑调用 `xiaoheihe-cli`。CLI 和技能需安装在该电脑上，并授予 Dot 访问权限。使用时电脑需在线，ChatGPT 桌面应用需保持打开。[电脑连接文档](https://learn.chatgpt.com/docs/dots/computers-and-apps)
+
+Dot 读取技能后可调用本机命令，例如：
+
+> 使用这台电脑上的 xiaoheihe-cli，列出我最近玩过的 10 款游戏，包含我的评分。
+
+### Agent Skill
+
+Agent Skill 随 wheel 和源码包提供：
+
+```bash
+xiaoheihe-cli skill install
+```
+
+安装到当前 Codex home 的技能目录；已有其他来源或符号链接时拒绝覆盖。技能内容位于 [skills/xiaoheihe-cli/SKILL.md](skills/xiaoheihe-cli/SKILL.md)。
+
+### MCP
+
 启用 MCP：
 
 ```bash
@@ -99,13 +113,18 @@ uv run xiaoheihe-cli mcp --transport streamable-http --port 8001
 
 MCP 写工具默认 `dry_run=true`。实际提交需显式设置 `dry_run=false`；图文和文章的公开发布还需设置 `draft=false`。工具清单、参数和客户端配置见 [MCP](docs/MCP.md)。
 
-Agent Skill 随 wheel 和源码包提供：
+## 浏览器
+
+网页登录可用已安装的 Chrome 或 Edge；需要配套引擎时，在工具环境运行 `playwright install chromium`，源码环境执行 `uv run playwright install chromium firefox webkit`。这些操作不读取日常浏览器的个人资料。
 
 ```bash
-xiaoheihe-cli skill install
+xiaoheihe-cli login --browser chrome
+xiaoheihe-cli login --browser brave
+xiaoheihe-cli login --browser firefox-system
+xiaoheihe-cli login --browser safari
 ```
 
-安装到当前 Codex home 的技能目录；已有其他来源或符号链接时拒绝覆盖。技能内容位于 [skills/xiaoheihe-cli/SKILL.md](skills/xiaoheihe-cli/SKILL.md)。
+更多浏览器可用 `login --browser brave|vivaldi|opera|arc|firefox-system|safari` 选择；安装路径、系统 Firefox 驱动和 Safari 首次设置见 [浏览器登录](docs/browser-login.md)。
 
 ## 结果与诊断
 
